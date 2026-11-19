@@ -9,7 +9,7 @@ internal enum ConnectionState { Disconnected, Connecting, Connected, Error }
 internal sealed record MixerState(string Status, string DisplayStatus, int[] Levels, string[] Apps,
     int MovedChannel = -1, long LastMovement = 0, string? ConnectedPort = null,
     ConnectionState Connection = ConnectionState.Disconnected,
-    int?[]? WindowsLevels = null, bool[]? WaitingForKnob = null);
+    int?[]? WindowsLevels = null, bool[]? WaitingForKnob = null, DeviceFirmware? Firmware = null);
 
 internal sealed class DeviceLink : IDisposable
 {
@@ -26,6 +26,44 @@ internal sealed class DeviceLink : IDisposable
     private string[] availablePorts = [];
     internal string[] AvailablePorts => Volatile.Read(ref availablePorts);
     private int rescan;
+    private FirmwareSession? firmwareSession;
+
+    internal sealed class FirmwareSession(DeviceLink owner, DeviceFirmware device) : IDisposable
+    {
+        internal DeviceFirmware Device { get; } = device;
+        internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal volatile bool Reconnecting;
+
+        internal void Resume()
+        {
+            Reconnecting = true;
+            owner.serialWake.Set();
+        }
+
+        public void Dispose()
+        {
+            Interlocked.CompareExchange(ref owner.firmwareSession, null, this);
+            owner.serialWake.Set();
+        }
+    }
+
+    internal async Task<FirmwareSession> HoldForFirmwareAsync(DeviceFirmware device, CancellationToken token)
+    {
+        var session = new FirmwareSession(this, device);
+        if (Interlocked.CompareExchange(ref firmwareSession, session, null) is not null)
+            throw new InvalidOperationException("A firmware update already owns the connection.");
+        serialWake.Set();
+        try
+        {
+            await session.Released.Task.WaitAsync(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+            return session;
+        }
+        catch
+        {
+            session.Dispose();
+            throw;
+        }
+    }
 
     internal DeviceLink(MixerSettings settings)
     {
@@ -91,6 +129,8 @@ internal sealed class DeviceLink : IDisposable
         (OledPage Page, int Flags, uint Media)? sentPage = null;
         var lastDevice = LoadLastPort(Volatile.Read(ref settings).Port);
         string nonce = "";
+        DeviceFirmware? firmware = null;
+        bool firmwareQuerySent = false;
         var failures = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         bool priorityPort = false;
         SerialDataReceivedEventHandler onData = (_, _) =>
@@ -106,23 +146,45 @@ internal sealed class DeviceLink : IDisposable
             while (!stop.IsCancellationRequested)
             {
                 long now = Environment.TickCount64;
+                var updating = Volatile.Read(ref firmwareSession);
+                if (updating is { Reconnecting: false })
+                {
+                    if (!updating.Released.Task.IsCompleted)
+                    {
+                        if (serial is null || !connected || firmware != updating.Device)
+                            updating.Released.TrySetException(new InvalidOperationException("The selected controller is no longer connected."));
+                        else
+                        {
+                            CloseSerial();
+                            Volatile.Write(ref state, new("Firmware update in progress", "OLED paused", levels, []));
+                            updating.Released.TrySetResult();
+                        }
+                    }
+                    serialWake.WaitOne(120);
+                    continue;
+                }
                 var config = Volatile.Read(ref settings);
                 string manualPort = config.PreferredPort.Trim();
-                bool automatic = config.AutoDetect && manualPort.Length == 0;
-                string mode = automatic ? "auto" : manualPort;
+                bool automatic = updating is not null || (config.AutoDetect && manualPort.Length == 0);
+                string mode = updating is not null ? "firmware:" + updating.Device.Mac : automatic ? "auto" : manualPort;
                 int scan = Volatile.Read(ref rescan);
                 if (!string.Equals(mode, connectionMode, StringComparison.OrdinalIgnoreCase) || scan != requestedScan)
                 {
+                    bool keepVerifiedConnection = connectionMode.StartsWith("firmware:", StringComparison.Ordinal) &&
+                        updating is null && connected && (automatic || manualPort.Equals(desiredPort, StringComparison.OrdinalIgnoreCase));
                     connectionMode = mode;
                     requestedScan = scan;
-                    desiredPort = "";
-                    CloseSerial();
-                    nextConnect = 0;
-                    probeIndex = 0;
-                    nextPortList = 0;
-                    failures.Clear();
-                    status = automatic ? "Looking for mixer…" : "Disconnected";
-                    connection = automatic ? ConnectionState.Connecting : ConnectionState.Disconnected;
+                    if (!keepVerifiedConnection)
+                    {
+                        desiredPort = "";
+                        CloseSerial();
+                        nextConnect = 0;
+                        probeIndex = 0;
+                        nextPortList = 0;
+                        failures.Clear();
+                        status = automatic ? "Looking for mixer…" : "Disconnected";
+                        connection = automatic ? ConnectionState.Connecting : ConnectionState.Disconnected;
+                    }
                 }
 
                 if (now >= nextPortList)
@@ -220,9 +282,15 @@ internal sealed class DeviceLink : IDisposable
                                 legacyQuerySent = true;
                             }
                         }
+                        if (identityVerified && !firmwareQuerySent)
+                        {
+                            serial.WriteLine("@I," + nonce);
+                            firmwareQuerySent = true;
+                        }
                         if (connected && now >= nextHello)
                         {
                             serial.WriteLine("@Q");
+                            if (firmware is null) serial.WriteLine("@I," + nonce);
                             nextHello = now + (ready ? 4500 : 2300);
                         }
                         if (connected && now - lastPacket >= 2300)
@@ -298,7 +366,7 @@ internal sealed class DeviceLink : IDisposable
                 }
 
                 Volatile.Write(ref state, new(status, display, levels, [], movedChannel, lastMovement,
-                    connected ? desiredPort : null, connection));
+                    connected ? desiredPort : null, connection, Firmware: firmware));
                 serialWake.WaitOne(serial is null ? 120 : 18);
             }
         }
@@ -323,6 +391,12 @@ internal sealed class DeviceLink : IDisposable
                 Establish();
             }
             if (!identityVerified && !line.StartsWith("MIX,", StringComparison.Ordinal)) return;
+            if (identityVerified && DeviceFirmware.Parse(line, nonce) is { } detected)
+            {
+                firmware = detected;
+                if (hasLevels) Establish();
+                return;
+            }
             if (line is "OLED,READY,128,64,2" or "OLED,READY,128,64,3")
             {
                 standaloneOled = line.EndsWith(",3", StringComparison.Ordinal);
@@ -392,6 +466,8 @@ internal sealed class DeviceLink : IDisposable
         void Establish()
         {
             if (connected) return;
+            if (Volatile.Read(ref firmwareSession) is { Reconnecting: true } updating &&
+                (firmware is null || firmware.Mac != updating.Device.Mac)) return;
             connected = true;
             status = "Connected";
             connection = ConnectionState.Connected;
@@ -423,6 +499,8 @@ internal sealed class DeviceLink : IDisposable
             catch (Exception ex) when (IsPortError(ex)) { }
             serial = null;
             buffer.Clear();
+            firmware = null;
+            firmwareQuerySent = false;
             hasLevels = ready = identityVerified = legacyQuerySent = lineOverflow = false;
             if (connected) audio.SetHardware(null);
             connected = false;

@@ -20,7 +20,7 @@ internal sealed partial class MixerForm : Form
     private MixerSettings config;
     private ThemePalette palette;
     private TableLayoutPanel? shell;
-    private Panel? scroll;
+    private PageScroller? scroll;
     private UiMotion? navigationMotion;
     private MixerButton[] navigation = [];
     private byte[]? idleFrame;
@@ -70,11 +70,14 @@ internal sealed partial class MixerForm : Form
 
     private void BuildShell()
     {
+        int scrollOffset = scroll?.Offset ?? 0;
         SuspendLayout();
         navigationMotion?.Dispose();
-        settingsBody?.Dispose();
+        if (settingsBody?.Parent is null) settingsBody?.Dispose();
         settingsBody = null;
         updateStatus = null;
+        firmwareStatus = null;
+        firmwareCheck = firmwareInstall = null;
         updateCheck = null;
         portPicker = null;
         shell?.Dispose();
@@ -92,11 +95,12 @@ internal sealed partial class MixerForm : Form
         shell.Controls.Add(BuildSidebar(), 0, 0);
         shell.Controls.Add(new Panel { BackColor = palette.Line, Dock = DockStyle.Fill, Margin = new(0) }, 1, 0);
 
-        scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new(32, 18, 32, 22) };
+        scroll = new PageScroller(palette) { Dock = DockStyle.Fill, Padding = new(32, 18, 32, 22) };
         shell.Controls.Add(scroll, 2, 0);
         BuildPage(scale: false);
         ScaleNewContent(shell);
         ResumeLayout(true);
+        scroll.ScrollTo(scrollOffset);
         UpdateView();
     }
 
@@ -110,23 +114,29 @@ internal sealed partial class MixerForm : Form
     {
         if (scroll is null) return;
         scroll.SuspendLayout();
-        if (scroll.Controls.Count > 0)
-        {
-            var previous = scroll.Controls[0];
-            if (previous == settingsBody) scroll.Controls.Remove(previous);
-            else previous.Dispose();
-        }
+        var previous = scroll.Page;
+        scroll.SetPage(null);
+        if (previous != settingsBody) previous?.Dispose();
         preview = null;
         meters = [];
         oledDetail = weatherDetail = null;
-        scroll.AutoScrollPosition = Point.Empty;
         bool cached = page == 2 && settingsBody is not null;
         var body = cached ? settingsBody! : CreatePage(page);
-        scroll.Controls.Add(body);
+        scroll.SetPage(body);
         if (scale && !cached) ScaleNewContent(body);
         if (page == 2) settingsBody = body;
         scroll.ResumeLayout(true);
         UpdateView();
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        // Windows can send the wheel to the focused sidebar control instead of
+        // the page under the pointer, depending on the user's mouse settings.
+        if (scroll is { IsHandleCreated: true } viewport &&
+            viewport.ClientRectangle.Contains(viewport.PointToClient(PointToScreen(e.Location))))
+            viewport.ScrollWheel(e);
+        base.OnMouseWheel(e);
     }
 
     private void PrewarmSettings()
@@ -139,8 +149,8 @@ internal sealed partial class MixerForm : Form
     private Control CreatePage(int target)
     {
         var body = Grid(1, 2);
-        body.Dock = DockStyle.Top;
-        body.Height = target switch { 0 => 634, 2 => 960, _ => 600 };
+        body.Dock = DockStyle.None;
+        body.Height = target switch { 0 => 634, 2 => 1180, _ => 600 };
         body.RowStyles.Add(new(SizeType.Absolute, 60));
         body.RowStyles.Add(new(SizeType.Percent, 100));
         var title = Caption(new[] { "Dashboard", "OLED", "Settings" }[target], UiMetrics.Page, bold: true);
@@ -457,7 +467,7 @@ internal sealed partial class MixerForm : Form
             Row("Knob takeover mode", takeover), Row("Knob movement threshold", threshold),
             Divider(), Caption("Device connection", UiMetrics.Section, bold: true, height: 37), detect,
             Row("Preferred port", Inline(preferred, rescan)),
-            Caption("A specific port overrides automatic detection.", 9, muted: true), BuildAbout());
+            Caption("A specific port overrides automatic detection.", 9, muted: true), BuildAbout(), BuildFirmwareSection());
     }
 
     private void RebuildAfterInput() => BeginInvoke((Action)BuildShell);
@@ -692,6 +702,7 @@ internal sealed partial class MixerForm : Form
     {
         if (exiting) return;
         var state = link.State;
+        ObserveFirmware(state);
         long now = Environment.TickCount64;
         if (config.Page == OledPage.Weather && config.City.Length > 0 && !fetchingWeather && now >= nextWeather)
             _ = FetchWeather(config.City);
@@ -773,6 +784,12 @@ internal sealed partial class MixerForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (firmwareFlashing && e.CloseReason == CloseReason.UserClosing)
+        {
+            exiting = false;
+            e.Cancel = true;
+            return;
+        }
         if (!exiting && e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
@@ -793,7 +810,7 @@ internal sealed partial class MixerForm : Form
         SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
         refresh.Dispose();
         navigationMotion?.Dispose();
-        settingsBody?.Dispose();
+        if (settingsBody?.Parent is null) settingsBody?.Dispose();
         tips.Dispose();
         link.Dispose();
         settingsSave.GetAwaiter().GetResult();

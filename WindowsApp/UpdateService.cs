@@ -32,7 +32,7 @@ internal interface IUpdateInstaller
     void Launch(VerifiedUpdate update, int currentProcessId, string applicationPath);
 }
 
-internal sealed class UpdateService : IDisposable
+internal sealed partial class UpdateService : IDisposable
 {
     private const int MetadataLimit = 1024 * 1024;
     private const long PackageLimit = 1024L * 1024 * 1024;
@@ -41,7 +41,7 @@ internal sealed class UpdateService : IDisposable
     private readonly HttpClient http;
     private readonly string? repository;
     private readonly string? publicKey;
-    private DateTimeOffset retryAfter;
+    private long retryAfterUnixSeconds;
 
     internal UpdateService() : this(BuildInfo.Get("UpdateRepository"), BuildInfo.Get("UpdatePublicKey"),
         new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { }
@@ -62,7 +62,7 @@ internal sealed class UpdateService : IDisposable
     internal async Task<UpdateRelease?> CheckAsync(CancellationToken cancellationToken)
     {
         if (repository is null) throw new InvalidOperationException("Update repository is not configured.");
-        if (DateTimeOffset.UtcNow < retryAfter)
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() < Volatile.Read(ref retryAfterUnixSeconds))
             throw new InvalidOperationException("GitHub rate limited requests. Try again later.");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -71,6 +71,20 @@ internal sealed class UpdateService : IDisposable
         byte[] json = await ReadSmallAsync(response, MetadataLimit, timeout.Token).ConfigureAwait(false);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
+        if (root.GetProperty("tag_name").GetString() == FirmwareReleaseTag)
+        {
+            // Recover when the dedicated firmware release was accidentally marked as latest.
+            using var recent = await GetAsync(new Uri($"https://api.github.com/repos/{repository}/releases?per_page=30"),
+                binary: false, timeout.Token).ConfigureAwait(false);
+            using var listing = JsonDocument.Parse(await ReadSmallAsync(recent, MetadataLimit, timeout.Token).ConfigureAwait(false));
+            root = listing.RootElement.EnumerateArray()
+                .Where(item => !item.GetProperty("draft").GetBoolean() && !item.GetProperty("prerelease").GetBoolean())
+                .Select(item => (Release: item, Version: TryStableVersion(item.GetProperty("tag_name").GetString() ?? "", out var v) ? v : null))
+                .Where(item => item.Version is not null).OrderByDescending(item => item.Version)
+                .FirstOrDefault().Release;
+            if (root.ValueKind == JsonValueKind.Undefined) return null;
+            root = root.Clone();
+        }
         if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) return null;
         string tag = root.GetProperty("tag_name").GetString() ?? "";
         if (!StableVersion.IsMatch(tag) || !Version.TryParse(tag.TrimStart('v'), out var version))
@@ -85,11 +99,7 @@ internal sealed class UpdateService : IDisposable
             _ => null
         };
         string? name = architecture is null ? null : $"Voltra-{version}-win-{architecture}.exe";
-        var assets = root.GetProperty("assets").EnumerateArray()
-            .Where(asset => asset.GetProperty("state").GetString() == "uploaded")
-            .Select(asset => new UpdateAsset(asset.GetProperty("id").GetInt64(),
-                asset.GetProperty("name").GetString() ?? "", asset.GetProperty("size").GetInt64()))
-            .Where(asset => asset.Id > 0 && asset.Size > 0).ToArray();
+        var assets = ReadUploadedAssets(root);
         UpdateAsset? Find(string? assetName) => assets.SingleOrDefault(asset => asset.Name == assetName);
         return new(version, root.GetProperty("body").GetString() ?? "",
             Find(name), Find(name + ".json"), Find(name + ".json.sig"));
@@ -107,12 +117,7 @@ internal sealed class UpdateService : IDisposable
         var package = release.Package!;
         var manifest = await ReadAssetAsync(release.Manifest!, 8192, token).ConfigureAwait(false);
         var signature = await ReadAssetAsync(release.Signature!, 1024, token).ConfigureAwait(false);
-        using var rsa = RSA.Create();
-        byte[] key = Convert.FromBase64String(publicKey!);
-        rsa.ImportSubjectPublicKeyInfo(key, out int keyLength);
-        if (keyLength != key.Length || rsa.KeySize < 2048 ||
-            !rsa.VerifyData(manifest, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pss))
-            throw new CryptographicException("The update manifest signature is invalid.");
+        VerifySignature(manifest, signature);
 
         using var document = JsonDocument.Parse(manifest);
         var root = document.RootElement;
@@ -126,6 +131,14 @@ internal sealed class UpdateService : IDisposable
         byte[] expectedHash = Convert.FromHexString(root.GetProperty("sha256").GetString() ?? "");
         if (expectedHash.Length != 32) throw new InvalidDataException("The signed package hash is invalid.");
 
+        await DownloadVerifiedAssetAsync(package, expectedHash, destination, progress, token).ConfigureAwait(false);
+        return new(release.Version, Path.GetFullPath(destination), Convert.ToHexString(expectedHash));
+    }
+
+    private async Task DownloadVerifiedAssetAsync(UpdateAsset package, byte[] expectedHash, string destination,
+        IProgress<int> progress, CancellationToken token)
+    {
+        long length = package.Size;
         destination = Path.GetFullPath(destination);
         if (File.Exists(destination)) throw new IOException("Choose a new filename for the verified package.");
 
@@ -158,13 +171,28 @@ internal sealed class UpdateService : IDisposable
                 throw new CryptographicException("The package does not match its signed SHA-256 digest.");
             token.ThrowIfCancellationRequested();
             File.Move(temporary, destination);
-            return new(release.Version, destination, Convert.ToHexString(expectedHash));
         }
         finally
         {
             try { File.Delete(temporary); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    private static UpdateAsset[] ReadUploadedAssets(JsonElement root) =>
+        root.GetProperty("assets").EnumerateArray()
+            .Where(asset => asset.GetProperty("state").GetString() == "uploaded")
+            .Select(asset => new UpdateAsset(asset.GetProperty("id").GetInt64(),
+                asset.GetProperty("name").GetString() ?? "", asset.GetProperty("size").GetInt64()))
+            .Where(asset => asset.Id > 0 && asset.Size > 0).ToArray();
+    private void VerifySignature(byte[] manifest, byte[] signature)
+    {
+        using var rsa = RSA.Create();
+        byte[] key = Convert.FromBase64String(publicKey!);
+        rsa.ImportSubjectPublicKeyInfo(key, out int keyLength);
+        if (keyLength != key.Length || rsa.KeySize < 2048 ||
+            !rsa.VerifyData(manifest, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pss))
+            throw new CryptographicException("The update manifest signature is invalid.");
     }
 
     private Uri Api(string path) => new($"https://api.github.com/repos/{repository}/releases/{path}");
@@ -195,7 +223,7 @@ internal sealed class UpdateService : IDisposable
 
     private async Task<HttpResponseMessage> GetAsync(Uri uri, bool binary, CancellationToken token)
     {
-        if (DateTimeOffset.UtcNow < retryAfter)
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() < Volatile.Read(ref retryAfterUnixSeconds))
             throw new InvalidOperationException("GitHub rate limited requests. Try again later.");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -219,12 +247,13 @@ internal sealed class UpdateService : IDisposable
                  (response.Headers.RetryAfter is not null || Header(response, "X-RateLimit-Remaining") == "0")))
             {
                 var now = DateTimeOffset.UtcNow;
-                retryAfter = response.Headers.RetryAfter?.Date ?? now.Add(response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(2));
+                var retryAfter = response.Headers.RetryAfter?.Date ?? now.Add(response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(2));
                 if (response.Headers.RetryAfter is null &&
                     long.TryParse(Header(response, "X-RateLimit-Reset"), out long reset) &&
                     reset is > 0 and <= 253402300799)
                     retryAfter = DateTimeOffset.FromUnixTimeSeconds(reset);
                 if (retryAfter < now) retryAfter = now.AddMinutes(1);
+                Volatile.Write(ref retryAfterUnixSeconds, retryAfter.ToUnixTimeSeconds());
                 throw new InvalidOperationException("GitHub rate limited requests. Try again later.");
             }
             if (response.StatusCode == HttpStatusCode.NotFound)

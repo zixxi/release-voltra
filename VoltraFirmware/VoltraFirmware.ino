@@ -1,4 +1,10 @@
 #include <Arduino.h>
+#include <esp_mac.h>
+#include <esp_ota_ops.h>
+
+constexpr char FIRMWARE_VERSION[] = "0.1.1";
+constexpr char HARDWARE_ID[] = "VOLTRA-S3-ZERO";
+constexpr int PROTOCOL_VERSION = 1;
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S3)
 #error "Select an ESP32-S3 board. These five potentiometer pins are for the S3."
@@ -213,7 +219,7 @@ void handleOledSetupKey(int command) {
   }
 
   if (oledAddress == 0) {
-    Serial.println("OLED: no reply at 0x3C or 0x3D. Check power and SDA=8, SCL=9.");
+    Serial.printf("OLED: no reply at 0x3C or 0x3D. Check power and SDA=%d, SCL=%d.\n", OLED_SDA_PIN, OLED_SCL_PIN);
   } else {
     Serial.printf("OLED: I2C reply at 0x%02X. Trying %s.\n",
                   static_cast<unsigned>(oledAddress), OLED_NAMES[oledDriver]);
@@ -223,14 +229,29 @@ void handleOledSetupKey(int command) {
 #endif
 
 void handleDesktopCommand() {
-  if (commandLength == 10 && serialCommand[0] == 'H' && serialCommand[1] == ',') {
+  if (commandLength == 10 && (serialCommand[0] == 'H' || serialCommand[0] == 'I') && serialCommand[1] == ',') {
     for (size_t i = 2; i < commandLength; ++i) {
       const char c = serialCommand[i];
       if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) return;
     }
-    char response[32];
-    snprintf(response, sizeof(response), "PURPLEMIXER,1,%s\n", serialCommand + 2);
-    if (tryWriteSerial(response)) levelsDirty = true;
+    if (serialCommand[0] == 'H') {
+      char response[32];
+      snprintf(response, sizeof(response), "PURPLEMIXER,%d,%s\n", PROTOCOL_VERSION, serialCommand + 2);
+      if (tryWriteSerial(response)) levelsDirty = true;
+    } else {
+      uint8_t mac[6];
+      if (esp_efuse_mac_get_default(mac) != ESP_OK) return;
+      const esp_partition_t *running = esp_ota_get_running_partition();
+      const esp_partition_t *boot = esp_ota_get_boot_partition();
+      char response[144];
+      snprintf(response, sizeof(response), "VOLTRA,INFO,%s,%s,%s,%d,%02X%02X%02X%02X%02X%02X,%lu,%lu,%lu\n",
+               serialCommand + 2, HARDWARE_ID, FIRMWARE_VERSION, PROTOCOL_VERSION,
+               mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+               static_cast<unsigned long>(ESP.getFlashChipSize()),
+               static_cast<unsigned long>(running ? running->address : 0),
+               static_cast<unsigned long>(boot ? boot->address : 0));
+      tryWriteSerial(response);
+    }
     return;
   }
   if (strcmp(serialCommand, "Q") == 0) {
