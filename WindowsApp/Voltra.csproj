@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Voltra.ico</ApplicationIcon>
+    <Product>Voltra</Product>
+    <AssemblyTitle>Voltra</AssemblyTitle>
+    <Description>Desktop Audio Controller</Description>
+    <Version>0.9.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+     <!-- Existing project settings remain here -->
+    <VoltraUpdateRepository>zixxi/Voltra</VoltraUpdateRepository>
+    <VoltraUpdatePublicKey>MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA03cYpNwSryGhCRisF8qtkNnD0QzkbiRCCHr4d/DsdDqrNh/PGkHuYmnNyPAnXVQLjFkOYWa//Ou3ITVBbDW799gzjcL+yelpFhL0vNou6yXErOiuVJbXp6KevxO3EcXmhOF4PQKiUuWEjWAmVsZ2VlWpVj6l4on1BksbEgMvbR4NyXsxQwAgFlFk+wf2fsS08QZ5h1HJ7RHHJlYwHL2cWzFNNHfPbDM96mYYdooMsZtc0FDEZcPRVo82H0L90b064bEkPGkeSd+sjJ/eKqvBDnjcfAbM2aYQw7ek8SH0NMQrIzTkuciv+xWIF0Hqt3sNYAorxhvnx5H8jFmYqOiPyaHWzhvaBvF8RqosHb/Ty8AuNn3tLkC4uMQ/wyI24sjccvNcdbQ617AXzwYKkZS/4aOeiRjMiIFw2ftTx12rJeaI4MH06/tNxaU/5dBVWwZ/ITXa7pLSuiq1/kEzFZu1yPyMzQ0klnnVb3n2v24ofNMYoRfTyj7Cf45SjYUFdEPpfhaXi5uPcG0T1rdHDo963rhbkwg27zrmLCuOHN6qOQqtTh/U5NJVbVHERmrQOl2hHvIga77vzqKrXtm66bpBIuTtoWf2q3Jf0VaytJ86nR+lSzbrUeKoOOGzwvslxYiUOdO3/nw/zJl23wZMuKqkYgMC1IDJ2jUQlvyK9RzU1hECAwEAAQ==</VoltraUpdatePublicKey>
+    <VoltraProjectLicense>PolyForm-Noncommercial-1.0.0</VoltraProjectLicense>
+  </PropertyGroup>
+
+  <!-- Keep the existing ItemGroup sections unchanged -->
+
+  <!-- Compile the current source set so files left by older ZIP extractions
+       cannot reintroduce removed features. -->
+  <ItemGroup>
+    <Compile Include="AudioCoordinator.cs" />
+    <Compile Include="DeviceLink.cs" />
+    <Compile Include="FieldControls.cs" />
+    <Compile Include="MixerForm.cs" />
+    <Compile Include="MixerForm.Updates.cs" />
+    <Compile Include="MixerVisuals.cs" />
+    <Compile Include="OledMixerFont.cs" />
+    <Compile Include="OledRenderer.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="UiMotion.cs" />
+    <Compile Include="VolumeTakeover.cs" />
+    <Compile Include="WeatherService.cs" />
+    <Compile Include="WindowsAudio.cs" />
+    <Compile Include="UpdateService.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="UpdateRepository" Value="$(VoltraUpdateRepository)" />
+    <AssemblyMetadata Include="UpdatePublicKey" Value="$(VoltraUpdatePublicKey)" />
+    <AssemblyMetadata Include="ProjectLicense" Value="$(VoltraProjectLicense)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+  </ItemGroup>
+</Project>
