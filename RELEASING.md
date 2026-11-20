@@ -1,21 +1,20 @@
 # Releasing Voltra
 
-Set the release version in the `Version` property in `WindowsApp/Voltra.csproj`.
+Set the release version in the `Version` property in the root `Directory.Build.props`.
 The SDK uses it for executable metadata and About reads it from the assembly.
 Tag the matching stable GitHub release `vMAJOR.MINOR.PATCH`.
 
-Supply these MSBuild properties in the release build or a local build props file.
+The Windows application reads these defaults from the same file. A release build
+can override them with MSBuild properties.
 
 | Property | Value |
 | --- | --- |
-| `VoltraUpdateRepository` | The actual public GitHub repository, in `owner/repository` form |
-| `VoltraUpdatePublicKey` | Base64-encoded DER SubjectPublicKeyInfo for the release-signing RSA public key, at least 2048 bits |
-| `VoltraProjectLicense` | The license selected by the owner, once applied to the project |
+| `VoltraUpdateRepository` | `zixxi/release-voltra` |
+| `VoltraUpdatePublicKey` | The existing RSA-4096 release-signing public key, encoded as base64 DER SubjectPublicKeyInfo |
+| `VoltraProjectLicense` | `PolyForm-Noncommercial-1.0.0` |
 
-The build embeds these values in its metadata. The repository defaults to `zixxi/Voltra`. The package has no preset signing
-key or project license. A repository enables update discovery and the GitHub link. Verified downloads also require the signing key
-and release assets. Keep the private signing key outside the repository and
-distribution environment.
+The build embeds these values in its metadata. Keep the private signing key
+outside the repository and distribution environment.
 
 ## GitHub release assets
 
@@ -110,7 +109,7 @@ OLED settings, but does not provide automatic rollback.
 ### Publish the signed firmware release
 
 Use a dedicated public, stable GitHub Release with tag **`firmware-s3-zero`** in
-`zixxi/Voltra`. Set **Latest release** to off (REST `make_latest: "false"`) so
+`zixxi/release-voltra`. Set **Latest release** to off (REST `make_latest: "false"`) so
 the Windows updater's latest release remains independent. Publish or refresh
 these three assets on that release. The signed manifest provides the firmware
 version, so neither the release tag nor the desktop version changes to publish
@@ -128,7 +127,7 @@ with `manifest=firmware-manifest.json` when running the shell example.
 | JSON field | Value |
 | --- | --- |
 | `product` | `Voltra` |
-| `repository` | `zixxi/Voltra`, or the exact repository configured for a fork build |
+| `repository` | `zixxi/release-voltra`, or the exact repository configured for a fork build |
 | `hardware` | `VOLTRA-S3-ZERO` |
 | `protocolVersion` | JSON number `1` |
 | `firmwareVersion` | Exact firmware version, in `MAJOR.MINOR.PATCH` form |
@@ -158,9 +157,10 @@ powershell -NoProfile -File .\VoltraFirmware\Tools\Build-VoltraFlasher.ps1
 ```
 
 The script smoke-tests the frozen helper, copies it into the project, and builds
-Voltra with the SHA-256 of the exact executable. It can take
-`-UpdatePublicKey` with the existing base64-encoded release signing public
-key when it is supplied outside the project.
+Voltra with the SHA-256 of the exact executable. MSBuild rejects a supplied
+hash that differs from the bundled file. Normal builds also embed the bundled
+file's hash automatically when present. The script accepts `-UpdatePublicKey`
+to override the public key configured in `Directory.Build.props`.
 
 For a manual or Authenticode-signed build, use these commands:
 
@@ -186,9 +186,8 @@ source. A built Windows helper must be supplied by the release packager before
 in-app flashing is enabled.
 
 The current desktop build expects `VOLTRA_PROTOCOL 2` from the helper. Rebuild
-the executable whenever `voltra_flash.py` changes, then update the hash and
-rebuild the desktop app. Keep the existing release-signing public key set in
-the desktop build. The signed GitHub release format is unchanged.
+the executable whenever `voltra_flash.py` changes. The build script handles the
+hash and desktop rebuild. The signed GitHub release format is unchanged.
 
 ### USB recovery
 

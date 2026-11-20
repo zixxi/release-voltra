@@ -15,7 +15,7 @@ internal sealed partial class MixerForm : Form
     private readonly CancellationTokenSource lifetime = new();
     private readonly NotifyIcon tray = new();
     private readonly ToolTip tips = new();
-    private readonly ContextMenuStrip trayMenu = new();
+    private readonly VoltraTrayMenu trayMenu;
     private readonly DeviceLink link;
     private MixerSettings config;
     private ThemePalette palette;
@@ -55,6 +55,7 @@ internal sealed partial class MixerForm : Form
         ClientSize = new Size(1100, 690);
         StartPosition = FormStartPosition.CenterScreen;
         if (config.MediaPath.Length > 0) TryLoadMedia(config.MediaPath, false);
+        trayMenu = new VoltraTrayMenu(() => ThemePalette.From(config), RestoreFromTray, ExitFromTray);
         SetupTray();
         BuildShell();
         SystemEvents.UserPreferenceChanged += SystemThemeChanged;
@@ -764,16 +765,22 @@ internal sealed partial class MixerForm : Form
     {
         tray.Text = Text;
         tray.Icon = Icon;
-        trayMenu.Items.Add("Open Voltra", null, (_, _) =>
-        {
-            Show();
-            WindowState = FormWindowState.Normal;
-            Activate();
-        });
-        trayMenu.Items.Add("Exit", null, (_, _) => { exiting = true; Close(); });
         tray.ContextMenuStrip = trayMenu;
-        tray.DoubleClick += (_, _) => trayMenu.Items[0].PerformClick();
+        tray.DoubleClick += (_, _) => RestoreFromTray();
         tray.Visible = true;
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+    }
+
+    private void ExitFromTray()
+    {
+        exiting = true;
+        Close();
     }
 
     protected override void OnResize(EventArgs e)

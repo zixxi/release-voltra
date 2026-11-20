@@ -37,9 +37,9 @@ if (($protocol -join "`n").Trim() -ne 'VOLTRA_PROTOCOL 2') {
     throw 'The generated helper did not report the expected Voltra protocol.'
 }
 
+$hash = (Get-FileHash -LiteralPath $flasher -Algorithm SHA256).Hash
 New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
 Copy-Item -LiteralPath $flasher -Destination $bundledFlasher -Force
-$hash = (Get-FileHash -LiteralPath $bundledFlasher -Algorithm SHA256).Hash
 $buildArgs = @('build', (Join-Path $root 'WindowsApp\Voltra.csproj'), '-c', 'Release', "-p:VoltraFlasherSha256=$hash")
 if ($UpdatePublicKey) {
     $buildArgs += "-p:VoltraUpdatePublicKey=$UpdatePublicKey"
