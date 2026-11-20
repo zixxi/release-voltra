@@ -23,14 +23,7 @@ internal static class BuildInfo
 
 internal sealed record UpdateAsset(long Id, string Name, long Size);
 internal sealed record UpdateRelease(Version Version, string Notes, UpdateAsset? Package, UpdateAsset? Manifest, UpdateAsset? Signature);
-internal sealed record VerifiedUpdate(Version Version, string Path, string Sha256);
-
-/// <summary>Future signed installer handoff. A successful launch must wait for Voltra to exit
-/// before replacing any files, and report installation failures without removing the current version.</summary>
-internal interface IUpdateInstaller
-{
-    void Launch(VerifiedUpdate update, int currentProcessId, string applicationPath);
-}
+internal sealed record VerifiedUpdate(Version Version, string Path, long Size, string Sha256);
 
 internal sealed partial class UpdateService : IDisposable
 {
@@ -57,7 +50,21 @@ internal sealed partial class UpdateService : IDisposable
 
     internal Uri? RepositoryUrl => repository is null ? null : new($"https://github.com/{repository}");
     internal bool CanDownload(UpdateRelease release) => repository is not null && !string.IsNullOrWhiteSpace(publicKey) &&
-        release.Package is not null && release.Manifest is not null && release.Signature is not null;
+        release.Version > BuildInfo.Version && InstallerAssetName(release.Version) is { } name &&
+        release.Package?.Name == name && release.Manifest?.Name == name + ".json" &&
+        release.Signature?.Name == name + ".json.sig";
+
+    internal static string? InstallerAssetName(Version version)
+    {
+        string? architecture = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "x64",
+            Architecture.Arm64 => "arm64",
+            Architecture.X86 => "x86",
+            _ => null
+        };
+        return architecture is null ? null : $"Voltra-{version}-win-{architecture}.exe";
+    }
 
     internal async Task<UpdateRelease?> CheckAsync(CancellationToken cancellationToken)
     {
@@ -91,14 +98,7 @@ internal sealed partial class UpdateService : IDisposable
             throw new InvalidDataException("GitHub returned a release with an invalid version tag.");
         if (version <= BuildInfo.Version) return null;
 
-        string? architecture = RuntimeInformation.ProcessArchitecture switch
-        {
-            Architecture.X64 => "x64",
-            Architecture.Arm64 => "arm64",
-            Architecture.X86 => "x86",
-            _ => null
-        };
-        string? name = architecture is null ? null : $"Voltra-{version}-win-{architecture}.exe";
+        string? name = InstallerAssetName(version);
         var assets = ReadUploadedAssets(root);
         UpdateAsset? Find(string? assetName) => assets.SingleOrDefault(asset => asset.Name == assetName);
         return new(version, root.GetProperty("body").GetString() ?? "",
@@ -132,7 +132,7 @@ internal sealed partial class UpdateService : IDisposable
         if (expectedHash.Length != 32) throw new InvalidDataException("The signed package hash is invalid.");
 
         await DownloadVerifiedAssetAsync(package, expectedHash, destination, progress, token).ConfigureAwait(false);
-        return new(release.Version, Path.GetFullPath(destination), Convert.ToHexString(expectedHash));
+        return new(release.Version, Path.GetFullPath(destination), length, Convert.ToHexString(expectedHash));
     }
 
     private async Task DownloadVerifiedAssetAsync(UpdateAsset package, byte[] expectedHash, string destination,

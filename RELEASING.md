@@ -53,22 +53,88 @@ updates. Downloads use the configured repository's GitHub asset IDs and verify
 the signed manifest before storing a complete package. A failed transfer or
 integrity check never replaces a file.
 
-## Installer handoff
+## Windows release 0.9.3
 
-`IUpdateInstaller.Launch(VerifiedUpdate update, int currentProcessId,
-string applicationPath)` is the integration point for the future installer.
-The executable accepts nothing from this interface yet. **Update now** stays
-disabled while the official installer is unavailable.
+On Windows, use the .NET 10 SDK and the existing Inno Setup project. Build the
+flasher with the existing script and publish the x64 payload from the repository
+root. Point Setup at `publish\win-x64`, including its `tools` subdirectory.
 
-When integrating it, stage the verified package in an app-owned directory,
-recheck its hash and configured publisher signature immediately before launch,
-and hand control to an external process that waits for Voltra's process ID to
-exit. After a successful launch, Voltra can use its normal tray exit path,
-which flushes settings and closes the serial connection. The installer must
-enforce version and architecture checks again, keep the existing installation
-and settings recoverable on failure, report installation failures, and restart
-Voltra after a successful upgrade when requested. Use normal Windows elevation
-only for an installation that requires it.
+```powershell
+powershell -NoProfile -File .\VoltraFirmware\Tools\Build-VoltraFlasher.ps1
+dotnet publish .\WindowsApp\Voltra.csproj -c Release -r win-x64 --self-contained true -p:PlatformTarget=x64 -o .\publish\win-x64
+```
+
+Check that the published `Voltra.dll` reports assembly version `0.9.3.0`
+before compiling the installer.
+
+```powershell
+[Reflection.AssemblyName]::GetAssemblyName((Resolve-Path .\publish\win-x64\Voltra.dll).Path).Version
+```
+
+Apply the [installer edits](Installer/INTEGRATION.md) to the existing script
+before compiling it. The include waits for the previous Voltra process to
+exit, synchronizes startup registration with a limited wait and cleans up the
+Run entry on uninstall. Setup reports installation errors in its wizard. Select **Launch
+Voltra** on the completion page to reopen the app after success. After
+cancellation or a failure, reopen Voltra from Start to retry.
+
+Once the installer is final, including any Authenticode signing, generate the
+manifest and sign its exact bytes with the existing private key. Set
+`$VoltraPrivateKeyPath` to that key's location outside the repository, then
+run these commands in PowerShell with OpenSSL available.
+
+```powershell
+$package = Get-Item -LiteralPath .\Installer\Output\Voltra-0.9.3-win-x64.exe
+$manifest = $package.FullName + '.json'
+$release = [ordered]@{
+  product = 'Voltra'
+  repository = 'zixxi/release-voltra'
+  version = '0.9.3'
+  asset = $package.Name
+  size = $package.Length
+  sha256 = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash
+}
+[IO.File]::WriteAllText($manifest, ($release | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+openssl dgst -sha256 -sign $VoltraPrivateKeyPath -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 -out "$manifest.sig" $manifest
+if ($LASTEXITCODE -ne 0) { throw 'Voltra manifest signing failed.' }
+```
+
+In `zixxi/release-voltra`, attach these three assets to a draft tagged
+**`v0.9.3`**, then publish it as the latest stable app release.
+
+- `Voltra-0.9.3-win-x64.exe`
+- `Voltra-0.9.3-win-x64.exe.json`
+- `Voltra-0.9.3-win-x64.exe.json.sig`
+
+### Testing the installer and accent picker on Windows
+
+1. Update an installed 0.9.2 with the 0.9.3 installer. Test a manual install
+   and, once the signed release is available, **Update now** in 0.9.2. Launch
+   the resulting app and check **Version 0.9.3** in About.
+2. Check that Setup reaches its completion page with **Launch Voltra**
+   unchecked and checked. Run Setup with `/LOG` to inspect the startup
+   synchronization result. Verify that the saved startup preference and
+   mixer settings survived the upgrade.
+3. With normal Voltra running, run the command below. Expected results are
+   exit code zero, the same running mixer instance and no extra window or
+   tray icon. Repeat with the startup setting off. Check the
+   `Voltra` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+   against the saved preference.
+4. In Settings, open the accent picker from the preview square. Change hue
+   and brightness, edit HEX, and apply. Verify that Settings and the tray
+   follow the selection after reopening the app. Repeat with **Cancel**,
+   Escape and an outside click. Try invalid HEX, Dark, Light and System
+   themes, and a monitor edge.
+5. Confirm tray restore, audio, OLED and the existing ESP32 firmware flow
+   with the test device. Enable startup and uninstall. Check that the Run
+   value was removed and the settings file was retained.
+
+```powershell
+$exe = Join-Path $env:LOCALAPPDATA 'Programs\Voltra\Voltra.exe'
+$sync = Start-Process -FilePath $exe -ArgumentList '--sync-startup' -PassThru
+if (!$sync.WaitForExit(5000)) { throw 'Startup synchronization did not exit in five seconds.' }
+if ($sync.ExitCode -ne 0) { throw "Startup synchronization returned $($sync.ExitCode)." }
+```
 
 ## Waveshare ESP32-S3-Zero firmware
 

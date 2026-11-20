@@ -39,10 +39,12 @@ internal sealed partial class MixerForm : Form
     private bool fetchingWeather, exiting;
     private int page;
     private Task settingsSave = Task.CompletedTask;
+    private string? startupError;
 
     internal MixerForm()
     {
         config = MixerSettings.Load();
+        startupError = WindowsStartup.Synchronize(config.LaunchAtWindowsStartup);
         palette = ThemePalette.From(config);
         link = new(config);
         Text = "Voltra";
@@ -61,11 +63,8 @@ internal sealed partial class MixerForm : Form
         SystemEvents.UserPreferenceChanged += SystemThemeChanged;
         refresh.Tick += (_, _) => UpdateView();
         refresh.Start();
-        Shown += (_, _) =>
-        {
-            BeginInvoke((Action)PrewarmSettings);
-            StartUpdateChecks();
-        };
+        Shown += (_, _) => BeginInvoke((Action)PrewarmSettings);
+        StartUpdateChecks();
         Activated += (_, _) => ShowPendingUpdate();
     }
 
@@ -151,7 +150,7 @@ internal sealed partial class MixerForm : Form
     {
         var body = Grid(1, 2);
         body.Dock = DockStyle.None;
-        body.Height = target switch { 0 => 634, 2 => 1180, _ => 600 };
+        body.Height = target switch { 0 => 634, 2 => 1300, _ => 600 };
         body.RowStyles.Add(new(SizeType.Absolute, 60));
         body.RowStyles.Add(new(SizeType.Percent, 100));
         var title = Caption(new[] { "Dashboard", "OLED", "Settings" }[target], UiMetrics.Page, bold: true);
@@ -386,6 +385,7 @@ internal sealed partial class MixerForm : Form
 
     private Control AppSettings()
     {
+        var startup = BuildStartupSetting();
         var theme = Segments(Enum.GetNames<AppTheme>(), (int)config.Theme, index =>
         {
             if (config.Theme == (AppTheme)index) return;
@@ -409,12 +409,34 @@ internal sealed partial class MixerForm : Form
         }
         var custom = Entry(config.Accent, "#RRGGBB");
         custom.Width = 125;
-        var sample = new Panel { Width = 26, Height = 30, Margin = new(0, 4, 8, 0) };
-        sample.Paint += (_, e) => FieldChrome.Draw(e.Graphics, sample.ClientRectangle,
-            palette.Background, ColorTranslator.FromHtml(config.Accent), palette.Line);
-        tips.SetToolTip(sample, "Saved accent color");
+        var sample = ActionButton("", () => { }, 32);
+        sample.Swatch = ColorTranslator.FromHtml(config.Accent);
+        sample.AccessibleName = "Choose custom accent color";
+        sample.Cursor = Cursors.Hand;
+        tips.SetToolTip(sample, "Choose custom accent color");
         var accentError = Caption("", 9, height: 23);
         accentError.ForeColor = palette.Error;
+
+        void ApplyAccent(string hex)
+        {
+            custom.Editor.Text = hex;
+            sample.Swatch = ColorTranslator.FromHtml(hex);
+            sample.Invalidate();
+            if (config.Accent == hex) return;
+            Persist(config with { Accent = hex });
+            RebuildAfterInput();
+        }
+
+        AccentColorPicker? picker = null;
+        sample.Click += (_, _) =>
+        {
+            if (picker is not null) return;
+            picker = new AccentColorPicker(sample, palette, config.Accent, ApplyAccent);
+            picker.FormClosed += (_, _) => picker = null;
+            picker.Show(this);
+        };
+        sample.Disposed += (_, _) => picker?.Close();
+
         var apply = ActionButton("Apply", () =>
         {
             var hex = custom.Editor.Text.Trim();
@@ -424,8 +446,7 @@ internal sealed partial class MixerForm : Form
                 custom.Editor.Focus();
                 return;
             }
-            Persist(config with { Accent = hex.ToUpperInvariant() });
-            RebuildAfterInput();
+            ApplyAccent(hex.ToUpperInvariant());
         }, 80);
         custom.Editor.TextChanged += (_, _) => accentError.Text = "";
         custom.Editor.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { apply.PerformClick(); e.SuppressKeyPress = true; } };
@@ -460,6 +481,7 @@ internal sealed partial class MixerForm : Form
         };
         var rescan = ActionButton("Rescan", () => { link.Rescan(); PopulatePorts(); }, 80);
         return Stack(
+            Caption("General", UiMetrics.Section, bold: true, height: 37), startup,
             Divider(), Caption("Appearance", UiMetrics.Section, bold: true, height: 37), Row("Theme", theme),
             Row("Accent library", accents), Row("Custom accent", Inline(custom, sample, apply)), accentError,
             Divider(), Caption("Knob mapping", UiMetrics.Section, bold: true, height: 37), formatting,
@@ -469,6 +491,40 @@ internal sealed partial class MixerForm : Form
             Divider(), Caption("Device connection", UiMetrics.Section, bold: true, height: 37), detect,
             Row("Preferred port", Inline(preferred, rescan)),
             Caption("A specific port overrides automatic detection.", 9, muted: true), BuildAbout(), BuildFirmwareSection());
+    }
+
+    private Control BuildStartupSetting()
+    {
+        var startup = Check("Launch Voltra at Windows startup", false);
+        var status = Caption("", 9, muted: true, height: 38);
+        var section = Stack(startup, status);
+        section.Dock = DockStyle.None;
+        bool refreshing = false;
+
+        void RefreshStartupSetting()
+        {
+            refreshing = true;
+            var state = WindowsStartup.Read();
+            startup.Checked = state.Registered ?? false;
+            startup.Enabled = state.Installed;
+            status.Text = startupError ?? state.Message ?? "";
+            bool showStatus = status.Text.Length > 0;
+            status.Visible = showStatus;
+            section.Height = startup.Height + (showStatus ? status.Height : 0);
+            refreshing = false;
+        }
+
+        RefreshStartupSetting();
+        startup.CheckedChanged += (_, _) =>
+        {
+            if (refreshing) return;
+            var updated = config with { LaunchAtWindowsStartup = startup.Checked };
+            settingsSave.GetAwaiter().GetResult();
+            startupError = WindowsStartup.Synchronize(updated.LaunchAtWindowsStartup, updated.Save);
+            if (startupError is null) config = updated;
+            RefreshStartupSetting();
+        };
+        return section;
     }
 
     private void RebuildAfterInput() => BeginInvoke((Action)BuildShell);

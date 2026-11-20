@@ -15,6 +15,7 @@ internal sealed partial class MixerForm
     private UpdateRelease? pendingUpdate;
     private Version? lastShownUpdate;
     private Form? updateDialog;
+    internal InnoUpdateInstaller? PendingInstaller { get; private set; }
 
     private void StartUpdateChecks()
     {
@@ -130,15 +131,17 @@ internal sealed partial class MixerForm
         grid.Controls.Add(notes, 0, 3);
 
         bool canDownload = updates.CanDownload(release);
-        var status = Caption(canDownload ? "You can save the verified package. Installation will be available with the official installer."
-            : "A signed package for this build is unavailable.", 10, muted: true);
+        bool canInstall = canDownload && WindowsStartup.Read().Installed;
+        var status = Caption(!canDownload ? "A signed package for this build is unavailable."
+            : canInstall ? "Voltra will close before starting the installer."
+            : "Open the installed copy of Voltra to update automatically.", 10, muted: true);
         status.AutoEllipsis = false;
         var progress = new ProgressBar { Dock = DockStyle.Fill, Visible = false, AccessibleName = "Download progress" };
         grid.Controls.Add(status, 0, 4);
         grid.Controls.Add(progress, 0, 5);
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-        var install = ActionButton("Update now", () => { }, 110);
-        install.Enabled = false;
+        var install = ActionButton("Update now", () => { }, 110, canInstall);
+        install.Enabled = canInstall;
         var download = ActionButton("Download update", () => { }, 141, canDownload);
         download.Enabled = canDownload;
         CancellationTokenSource? downloadToken = null;
@@ -147,7 +150,8 @@ internal sealed partial class MixerForm
             if (downloadToken is null) dialog.Close();
             else downloadToken.Cancel();
         }, 108);
-        download.Click += (_, _) => _ = SaveUpdateAsync();
+        download.Click += (_, _) => _ = GetUpdateAsync(installAfterDownload: false);
+        install.Click += (_, _) => _ = GetUpdateAsync(installAfterDownload: true);
         buttons.Controls.AddRange([install, download, later]);
         grid.Controls.Add(buttons, 0, 6);
         dialog.Controls.Add(grid);
@@ -161,32 +165,67 @@ internal sealed partial class MixerForm
         dialog.FormClosed += (_, _) => updateDialog = null;
         dialog.Show(this);
 
-        async Task SaveUpdateAsync()
+        async Task GetUpdateAsync(bool installAfterDownload)
         {
-            if (downloadToken is not null) return;
-            using var save = new SaveFileDialog
+            if (downloadToken is not null || PendingInstaller is not null || exiting) return;
+            if (installAfterDownload && firmwareFlashing)
             {
-                Title = "Save verified Voltra update", FileName = release.Package!.Name,
-                Filter = "Windows installer (*.exe)|*.exe", DefaultExt = "exe", AddExtension = true
-            };
-            if (save.ShowDialog(dialog) != DialogResult.OK) return;
+                status.Text = "Wait for the ESP32 firmware operation to finish before updating Voltra.";
+                return;
+            }
+
+            string? savedPath = null;
+            if (!installAfterDownload)
+            {
+                using var save = new SaveFileDialog
+                {
+                    Title = "Save verified Voltra update", FileName = release.Package!.Name,
+                    Filter = "Windows installer (*.exe)|*.exe", DefaultExt = "exe", AddExtension = true
+                };
+                if (save.ShowDialog(dialog) != DialogResult.OK) return;
+                savedPath = save.FileName;
+            }
 
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             downloadToken = cancellation;
-            download.Enabled = false;
+            install.Enabled = download.Enabled = false;
             later.Text = "Cancel download";
             progress.Value = 0;
             progress.Visible = true;
             status.Text = "Verifying release information…";
+            string? stage = null;
+            InnoUpdateInstaller? prepared = null;
             try
             {
-                var verified = await updates.DownloadAsync(release, save.FileName, new Progress<int>(value =>
+                if (installAfterDownload)
+                    stage = InnoUpdateInstaller.CreateStage();
+                string destination = savedPath ?? Path.Combine(stage!, release.Package!.Name);
+                var verified = await updates.DownloadAsync(release, destination, new Progress<int>(value =>
                 {
                     if (dialog.IsDisposed || downloadToken != cancellation) return;
                     progress.Value = value;
                     status.Text = value == 100 ? "Verifying downloaded file…" : $"Downloading… {value}%";
                 }), cancellation.Token);
-                if (!dialog.IsDisposed) status.Text = $"Verified package saved · {Path.GetFileName(verified.Path)}";
+                if (dialog.IsDisposed || exiting) return;
+                if (!installAfterDownload)
+                {
+                    status.Text = $"Verified package saved · {Path.GetFileName(verified.Path)}";
+                    return;
+                }
+
+                status.Text = "Checking the staged installer…";
+                prepared = await InnoUpdateInstaller.PrepareAsync(verified, cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (dialog.IsDisposed || exiting) return;
+                if (firmwareFlashing)
+                {
+                    status.Text = "Wait for the ESP32 firmware operation to finish before updating Voltra.";
+                    return;
+                }
+                PendingInstaller = prepared;
+                prepared = null;
+                stage = null;
+                ExitFromTray();
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
@@ -194,16 +233,19 @@ internal sealed partial class MixerForm
             }
             catch (Exception ex) when (IsUpdateError(ex))
             {
-                if (!dialog.IsDisposed) status.Text = "Download failed. " + UpdateErrorMessage(ex);
+                if (!dialog.IsDisposed) status.Text = "Unable to prepare the update. " + UpdateErrorMessage(ex);
             }
             finally
             {
                 downloadToken = null;
+                prepared?.Dispose();
+                if (stage is not null) InnoUpdateInstaller.DeleteStage(stage);
                 if (!dialog.IsDisposed)
                 {
                     progress.Visible = false;
                     later.Text = "Later";
                     download.Enabled = canDownload;
+                    install.Enabled = canInstall;
                 }
             }
         }
@@ -211,7 +253,8 @@ internal sealed partial class MixerForm
 
     private static bool IsUpdateError(Exception ex) => ex is HttpRequestException or IOException or
         UnauthorizedAccessException or CryptographicException or OperationCanceledException or
-        FormatException or JsonException or KeyNotFoundException or InvalidOperationException or InvalidDataException;
+        FormatException or JsonException or KeyNotFoundException or InvalidOperationException or InvalidDataException or
+        System.Security.SecurityException;
 
     private static string UpdateErrorMessage(Exception ex) => ex switch
     {

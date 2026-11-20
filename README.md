@@ -74,13 +74,18 @@ three seconds after the last volume change.
 
 ## About and updates
 
+In an installed copy, **Settings → General → Launch Voltra at Windows startup**
+controls whether Voltra starts in the system tray when you sign in. Open its
+window from the tray icon or launch Voltra manually. Setup reuses the saved
+startup preference on upgrades.
+
 **Settings → About** shows the executable version and update status. Builds
 configured with a public GitHub repository check shortly after startup and every
-six hours. Use **Check for updates** to check manually. When a newer stable
-release has signed assets for your architecture, **Download update** lets you save
-the verified package. In-app installation will be available after the official
-installer is integrated. See [Release configuration](RELEASING.md) for build
-settings and the installer contract.
+six hours. For a newer release with signed assets for your architecture,
+**Update now** verifies the package, closes Voltra and opens the Inno Setup
+wizard. **Download update** saves the verified package for manual installation.
+See [Release configuration](RELEASING.md) for the 0.9.1 upgrade paths and release
+instructions.
 
 ## Device firmware updates
 

@@ -5,16 +5,44 @@ namespace Voltra;
 internal static class Program
 {
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
+        if (args.Contains("--sync-startup", StringComparer.OrdinalIgnoreCase))
+            return WindowsStartup.SyncForSetup(args);
+
+        bool minimized = args.Contains("--minimized", StringComparer.OrdinalIgnoreCase);
+        if (args is not ["--after-setup"] && Mutex.TryOpenExisting("Voltra.Setup", out var setup))
+        {
+            setup.Dispose();
+            if (!minimized)
+                MessageBox.Show("Finish Voltra Setup before opening the app.", "Voltra");
+            return 0;
+        }
         using var instance = new Mutex(true, "PurpleMixer.Desktop", out bool first);
         if (!first)
         {
-            MessageBox.Show("Voltra is already running. Open it from the system tray.", "Voltra");
-            return;
+            if (!minimized)
+                MessageBox.Show("Voltra is already running. Open it from the system tray.", "Voltra");
+            return 0;
         }
         ApplicationConfiguration.Initialize();
-        Application.Run(new MixerForm());
+        using var form = new MixerForm();
+        using var context = new ApplicationContext();
+        form.FormClosed += (_, _) => context.ExitThread();
+        // A hidden form still needs a handle so Close runs the normal shutdown events.
+        _ = form.Handle;
+        if (!minimized) form.Show();
+        // Leaving MainForm unset keeps WinForms from showing it on entry to the loop.
+        Application.Run(context);
+        using var installer = form.PendingInstaller;
+        try { installer?.Launch(); }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show("Voltra has closed, but Windows could not start the installer. " + ex.Message,
+                "Voltra update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
+        }
+        return 0;
     }
 }
 
@@ -40,6 +68,7 @@ internal sealed record MixerSettings
     public string PreferredPort { get; init; } = "";
     public AppTheme Theme { get; init; }
     public string Accent { get; init; } = DefaultAccent;
+    public bool LaunchAtWindowsStartup { get; init; } = true;
     public bool FormatAppNames { get; init; } = true;
     public bool WindowsVolumeSync { get; init; } = true;
     public KnobTakeover TakeoverMode { get; init; }
@@ -81,6 +110,32 @@ internal sealed record MixerSettings
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
         return new();
+    }
+
+    internal static bool ReadStartupPreference() =>
+        ReadStartupPreference(SettingsPath) ??
+        ReadStartupPreference(Path.Combine(LegacyFolder, "settings.json")) ?? true;
+
+    private static bool? ReadStartupPreference(string path)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                throw new JsonException("Expected a settings object.");
+            if (!root.TryGetProperty(nameof(LaunchAtWindowsStartup), out var value)) return true;
+            return value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => throw new JsonException("Windows startup preference must be true or false.")
+            };
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 
     private static void Migrate(MixerSettings settings)
