@@ -65,7 +65,6 @@ Available pages include:
 - Mixer Levels
 - Time & Date
 - Weather
-
 ![Voltra OLED Configuration](assets/oled.png)
 
 The OLED interface is customizable through the desktop application.
@@ -84,6 +83,7 @@ When the Windows application closes, the ESP32 can continue displaying supported
 - Windows startup integration.
 - Persistent user settings.
 
+![Voltra Hardware](assets/hardware.png)
 ### Updates
 
 Voltra supports two independent update systems.
