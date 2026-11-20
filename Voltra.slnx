@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="WindowsApp/Voltra.csproj" />
+  <Project Path="LinuxApp/LinuxApp.csproj" />
+  <Project Path="Voltra.Core/Voltra.Core.csproj" />
 </Solution>

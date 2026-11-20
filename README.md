@@ -1,11 +1,13 @@
 # Voltra
 
-Voltra is a Windows Forms app for the five-knob ESP32-S3 mixer. The app
-receives five knob positions over USB serial and controls Windows application
-and master volume. It
-also streams the selected idle page to the 128×64 OLED. The firmware shows the
-last adjusted knob, its app label and percentage, then returns to the idle page
-three seconds after the last volume change.
+Voltra controls application and master volume from a five-knob ESP32-S3 mixer.
+The controller connects over USB serial and displays the selected idle page on
+its 128×64 OLED. After a hardware volume adjustment the firmware briefly shows
+the knob's label and percentage.
+
+Voltra has a Windows Forms app in `WindowsApp/` and an Avalonia app in
+`LinuxApp/`. See the [Linux setup and build guide](LinuxApp/README.md) for
+PipeWire audio control, dependencies, and deployment.
 
 ## Visual Studio Community 2026
 

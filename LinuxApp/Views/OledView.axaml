@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Voltra.Linux.Views.OledView">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="28,22,28,25" Spacing="22">
+      <TextBlock Text="OLED" Classes="heading" />
+      <Grid ColumnDefinitions="1.2*,*" ColumnSpacing="24">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Display preview" Classes="section" />
+          <Border Background="#090B10" CornerRadius="8" Padding="10">
+            <Image Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="None" />
+          </Border>
+          <TextBlock Name="DisplayStatus" Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+        <StackPanel Spacing="11" Grid.Column="1">
+          <TextBlock Text="Display page" Classes="section" />
+          <ComboBox Name="PageMenu" HorizontalAlignment="Stretch" />
+          <Grid Name="ClockRow" ColumnDefinitions="*,Auto" IsVisible="False">
+            <TextBlock Text="12-hour clock" VerticalAlignment="Center" />
+            <ToggleSwitch Grid.Column="1" Name="ClockFormat" />
+          </Grid>
+          <StackPanel Name="WeatherRow" IsVisible="False" Spacing="7">
+            <TextBlock Text="Weather location" />
+            <TextBox Name="City" Watermark="City name" />
+            <Button Name="ApplyCity" Content="Apply city" HorizontalAlignment="Left" />
+          </StackPanel>
+          <StackPanel Name="MediaRow" IsVisible="False" Spacing="7">
+            <Button Name="ChooseMedia" Content="Choose image or GIF" HorizontalAlignment="Left" />
+            <TextBlock Name="MediaName" Classes="muted" TextWrapping="Wrap" />
+          </StackPanel>
+          <StackPanel Name="SeparatorRow" Spacing="7">
+            <TextBlock Text="Master separator" />
+            <ComboBox Name="SeparatorMenu" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

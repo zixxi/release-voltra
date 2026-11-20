@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LinuxApp" />
+    <Using Include="System.Drawing" />
+    <Compile Include="../WindowsApp/AccentColor.cs" Link="AccentColor.cs" />
+    <Compile Include="../WindowsApp/VolumeTakeover.cs" Link="VolumeTakeover.cs" />
+    <Compile Include="../WindowsApp/OledMixerFont.cs" Link="OledMixerFont.cs" />
+    <Compile Include="../WindowsApp/WeatherService.cs" Link="WeatherService.cs" />
+  </ItemGroup>
+</Project>

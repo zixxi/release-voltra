@@ -1,6 +1,6 @@
 # Releasing Voltra
 
-Set the release version in the `Version` property in the root `Directory.Build.props`.
+Set the release version in the `VoltraVersion` property in the root `Directory.Build.props`.
 The SDK uses it for executable metadata and About reads it from the assembly.
 Tag the matching stable GitHub release `vMAJOR.MINOR.PATCH`.
 
@@ -282,3 +282,27 @@ sketch using Arduino IDE and the same board and partition configuration. Leave
 If the updater rejects flash layout, secure boot or encryption, use the
 recovery procedure for that device's actual provisioning. A standard app-only
 update is not suitable for that device.
+
+
+## Linux releases
+
+The Linux app uses the same `VoltraVersion` from `Directory.Build.props`.
+Build a self-contained `linux-x64` payload. Use a clean publish output to
+package each release.
+
+```sh
+dotnet publish LinuxApp/LinuxApp.csproj -c Release -r linux-x64 --self-contained true -o publish/linux-x64
+version=$(dotnet msbuild LinuxApp/LinuxApp.csproj -nologo -getProperty:Version)
+tar -C publish/linux-x64 -czf "Voltra-${version}-linux-x64.tar.gz" .
+sha256sum "Voltra-${version}-linux-x64.tar.gz"
+```
+
+Create a stable GitHub Release tagged `linux-vMAJOR.MINOR.PATCH` with release
+notes and the exact `Voltra-VERSION-linux-x64.tar.gz` asset. Publish it with
+**Set as the latest release** unchecked (`gh release create --latest=false`
+when using the CLI). Windows update discovery uses GitHub's latest release
+endpoint, so it must continue to point to a Windows release with signed assets.
+
+The Linux app links users to the matching package on GitHub for manual download
+and replacement. User configuration lives in the XDG configuration directory
+outside the portable archive.

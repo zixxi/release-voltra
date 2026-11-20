@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.MainWindow"
+        Title="Voltra" Width="1080" Height="700" MinWidth="830" MinHeight="565"
+        WindowStartupLocation="CenterScreen" Icon="avares://LinuxApp/Assets/Voltra.ico">
+  <Grid ColumnDefinitions="174,*">
+    <Border Grid.Column="0" Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,0,1,0">
+      <Grid Margin="14,24,14,16" RowDefinitions="Auto,*,Auto">
+        <StackPanel Spacing="22">
+          <TextBlock Text="Voltra" Margin="9,0,0,0" FontSize="26" FontWeight="SemiBold" />
+          <StackPanel Spacing="4">
+            <Button Name="DashboardButton" Classes="nav selected" Content="Dashboard" />
+            <Button Name="OledButton" Classes="nav" Content="OLED" />
+            <Button Name="SettingsButton" Classes="nav" Content="Settings" />
+          </StackPanel>
+        </StackPanel>
+        <TextBlock Name="VersionText" Grid.Row="2" Classes="muted" Margin="9,0,0,0" FontSize="12" />
+      </Grid>
+    </Border>
+    <Grid Grid.Column="1" RowDefinitions="*,Auto">
+      <Grid>
+        <views:DashboardView Name="Dashboard" />
+        <views:OledView Name="Oled" IsVisible="False" />
+        <views:SettingsView Name="Preferences" IsVisible="False" />
+      </Grid>
+      <TextBlock Name="Notice" Grid.Row="1" Margin="24,0,24,12" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
+    </Grid>
+  </Grid>
+</Window>

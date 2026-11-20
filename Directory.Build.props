@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
+    <VoltraVersion>0.9.4</VoltraVersion>
     <_VoltraWindowsProjectPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'WindowsApp', 'Voltra.csproj'))</_VoltraWindowsProjectPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(MSBuildProjectFullPath)' == '$(_VoltraWindowsProjectPath)'">
-    <Version>0.9.4</Version>
+    <Version>$(VoltraVersion)</Version>
     <VoltraUpdateRepository Condition="'$(VoltraUpdateRepository)' == ''">zixxi/release-voltra</VoltraUpdateRepository>
     <VoltraUpdatePublicKey Condition="'$(VoltraUpdatePublicKey)' == ''">MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA03cYpNwSryGhCRisF8qtkNnD0QzkbiRCCHr4d/DsdDqrNh/PGkHuYmnNyPAnXVQLjFkOYWa//Ou3ITVBbDW799gzjcL+yelpFhL0vNou6yXErOiuVJbXp6KevxO3EcXmhOF4PQKiUuWEjWAmVsZ2VlWpVj6l4on1BksbEgMvbR4NyXsxQwAgFlFk+wf2fsS08QZ5h1HJ7RHHJlYwHL2cWzFNNHfPbDM96mYYdooMsZtc0FDEZcPRVo82H0L90b064bEkPGkeSd+sjJ/eKqvBDnjcfAbM2aYQw7ek8SH0NMQrIzTkuciv+xWIF0Hqt3sNYAorxhvnx5H8jFmYqOiPyaHWzhvaBvF8RqosHb/Ty8AuNn3tLkC4uMQ/wyI24sjccvNcdbQ617AXzwYKkZS/4aOeiRjMiIFw2ftTx12rJeaI4MH06/tNxaU/5dBVWwZ/ITXa7pLSuiq1/kEzFZu1yPyMzQ0klnnVb3n2v24ofNMYoRfTyj7Cf45SjYUFdEPpfhaXi5uPcG0T1rdHDo963rhbkwg27zrmLCuOHN6qOQqtTh/U5NJVbVHERmrQOl2hHvIga77vzqKrXtm66bpBIuTtoWf2q3Jf0VaytJ86nR+lSzbrUeKoOOGzwvslxYiUOdO3/nw/zJl23wZMuKqkYgMC1IDJ2jUQlvyK9RzU1hECAwEAAQ==</VoltraUpdatePublicKey>
     <VoltraProjectLicense Condition="'$(VoltraProjectLicense)' == ''">PolyForm-Noncommercial-1.0.0</VoltraProjectLicense>

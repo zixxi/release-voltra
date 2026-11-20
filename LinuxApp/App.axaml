@@ -1,0 +1,85 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Voltra.Linux.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="Workspace">#17181D</SolidColorBrush>
+                    <SolidColorBrush x:Key="Sidebar">#121318</SolidColorBrush>
+                    <SolidColorBrush x:Key="Surface">#22242B</SolidColorBrush>
+                    <SolidColorBrush x:Key="Line">#3C414D</SolidColorBrush>
+                    <SolidColorBrush x:Key="SoftLine">#30323C</SolidColorBrush>
+                    <SolidColorBrush x:Key="Text">#F0F1F4</SolidColorBrush>
+                    <SolidColorBrush x:Key="Muted">#ADB2C0</SolidColorBrush>
+                    <SolidColorBrush x:Key="RowHover">#292A33</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="Workspace">#F8F9FB</SolidColorBrush>
+                    <SolidColorBrush x:Key="Sidebar">#EEF0F4</SolidColorBrush>
+                    <SolidColorBrush x:Key="Surface">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="Line">#C6CAD3</SolidColorBrush>
+                    <SolidColorBrush x:Key="SoftLine">#DEE1E9</SolidColorBrush>
+                    <SolidColorBrush x:Key="Text">#20232B</SolidColorBrush>
+                    <SolidColorBrush x:Key="Muted">#565D6A</SolidColorBrush>
+                    <SolidColorBrush x:Key="RowHover">#E5E7EE</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <SolidColorBrush x:Key="VoltraAccent">#B78BFA</SolidColorBrush>
+            <SolidColorBrush x:Key="AccentForeground">#17181D</SolidColorBrush>
+        </ResourceDictionary>
+    </Application.Resources>
+    <Application.Styles>
+        <FluentTheme />
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource Workspace}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style Selector="TextBlock.heading">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="13,7" />
+        </Style>
+        <Style Selector="Button.action">
+            <Setter Property="Background" Value="{DynamicResource VoltraAccent}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentForeground}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.nav">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+            <Setter Property="Padding" Value="13,9" />
+            <Setter Property="Transitions">
+                <Transitions><BrushTransition Property="Background" Duration="0:0:0.14" /></Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.nav.selected">
+            <Setter Property="Background" Value="{DynamicResource RowHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="{DynamicResource Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+    </Application.Styles>
+</Application>
