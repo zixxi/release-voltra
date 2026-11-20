@@ -509,3 +509,6 @@ FodyWeavers.xsd
 
 !/Installer/
 !/Installer/*.iss
+
+# Local release automation
+/Release-Voltra.bat

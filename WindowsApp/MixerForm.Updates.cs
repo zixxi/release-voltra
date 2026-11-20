@@ -15,6 +15,8 @@ internal sealed partial class MixerForm
     private UpdateRelease? pendingUpdate;
     private Version? lastShownUpdate;
     private Form? updateDialog;
+    private Action? refreshUpdateDialogTheme;
+    private bool handingOffUpdate;
     internal InnoUpdateInstaller? PendingInstaller { get; private set; }
 
     private void StartUpdateChecks()
@@ -99,127 +101,162 @@ internal sealed partial class MixerForm
         pendingUpdate = null;
         lastShownUpdate = release.Version;
 
+        var updatePalette = palette;
         var dialog = new Form
         {
             Text = "Update available", Icon = Icon, ShowInTaskbar = false,
-            StartPosition = FormStartPosition.CenterParent, ClientSize = new(530, 405),
-            MinimumSize = new(476, 396), AutoScaleMode = AutoScaleMode.Dpi,
-            BackColor = palette.Background, ForeColor = palette.Text, Font = Font
+            StartPosition = FormStartPosition.CenterParent, ClientSize = new(552, 424),
+            MinimumSize = new(480, 368), MinimizeBox = false, MaximizeBox = false,
+            AutoScaleDimensions = new(96, 96), AutoScaleMode = AutoScaleMode.Dpi,
+            BackColor = updatePalette.Background, ForeColor = updatePalette.Text, Font = Font
         };
         updateDialog = dialog;
-        dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, palette.Dark);
+        dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, updatePalette.Dark);
         var grid = Grid(1, 7);
-        grid.Padding = new(22, 15, 22, 15);
-        grid.RowStyles.Add(new(SizeType.Absolute, 36));
+        grid.Padding = new(24, 18, 24, 16);
+        grid.RowStyles.Add(new(SizeType.Absolute, 40));
         grid.RowStyles.Add(new(SizeType.Absolute, 30));
-        grid.RowStyles.Add(new(SizeType.Absolute, 24));
+        grid.RowStyles.Add(new(SizeType.Absolute, 29));
         grid.RowStyles.Add(new(SizeType.Percent, 100));
         grid.RowStyles.Add(new(SizeType.Absolute, 49));
-        grid.RowStyles.Add(new(SizeType.Absolute, 12));
-        grid.RowStyles.Add(new(SizeType.Absolute, 40));
+        grid.RowStyles.Add(new(SizeType.Absolute, 9));
+        grid.RowStyles.Add(new(SizeType.Absolute, 38));
 
-        grid.Controls.Add(Caption($"Voltra {release.Version} is available", UiMetrics.Section, bold: true), 0, 0);
-        grid.Controls.Add(Caption($"Current version · {BuildInfo.Version}    New version · {release.Version}", 10, muted: true), 0, 1);
-        grid.Controls.Add(Caption("What's new", 10, bold: true), 0, 2);
-        var notes = new TextBox
-        {
-            Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical,
-            BorderStyle = BorderStyle.FixedSingle, BackColor = palette.Field, ForeColor = palette.Text,
-            Text = string.IsNullOrWhiteSpace(release.Notes) ? "No release notes were provided." : release.Notes,
-            AccessibleName = "Release notes"
-        };
+        var heading = Caption($"Voltra {release.Version} is available", 18, bold: true);
+        var versions = Caption($"Current version: {BuildInfo.Version}     New version: {release.Version}", UiMetrics.Body, muted: true);
+        var notesHeading = Caption("What's new", 11, bold: true);
+        var notes = new ReleaseNotesView(updatePalette, release.Notes) { Dock = DockStyle.Fill };
+        grid.Controls.Add(heading, 0, 0);
+        grid.Controls.Add(versions, 0, 1);
+        grid.Controls.Add(notesHeading, 0, 2);
         grid.Controls.Add(notes, 0, 3);
 
         bool canDownload = updates.CanDownload(release);
         bool canInstall = canDownload && WindowsStartup.Read().Installed;
         var status = Caption(!canDownload ? "A signed package for this build is unavailable."
-            : canInstall ? "Voltra will close before starting the installer."
-            : "Open the installed copy of Voltra to update automatically.", 10, muted: true);
+            : canInstall ? "Voltra will restart to complete the update."
+            : "Open the installed copy of Voltra to update automatically.", UiMetrics.Body, muted: true);
         status.AutoEllipsis = false;
-        var progress = new ProgressBar { Dock = DockStyle.Fill, Visible = false, AccessibleName = "Download progress" };
+        status.Margin = new(0, 6, 0, 0);
+        int percent = 0;
+        bool statusIsError = false;
+        var progress = new Panel { Dock = DockStyle.Fill, Margin = new(0), Visible = false,
+            AccessibleName = "Download progress", AccessibleRole = AccessibleRole.ProgressBar };
+        progress.Paint += (_, e) =>
+        {
+            var track = new Rectangle(0, 0, progress.Width, Math.Max(1, progress.LogicalToDeviceUnits(4)));
+            using var background = new SolidBrush(updatePalette.Line);
+            using var fill = new SolidBrush(updatePalette.Accent);
+            e.Graphics.FillRectangle(background, track);
+            e.Graphics.FillRectangle(fill, 0, 0, track.Width * percent / 100, track.Height);
+        };
         grid.Controls.Add(status, 0, 4);
         grid.Controls.Add(progress, 0, 5);
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-        var install = ActionButton("Update now", () => { }, 110, canInstall);
-        install.Enabled = canInstall;
-        var download = ActionButton("Download update", () => { }, 141, canDownload);
-        download.Enabled = canDownload;
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, Margin = new(0), WrapContents = false,
+            FlowDirection = FlowDirection.RightToLeft };
         CancellationTokenSource? downloadToken = null;
         var later = ActionButton("Later", () =>
         {
             if (downloadToken is null) dialog.Close();
-            else downloadToken.Cancel();
-        }, 108);
-        download.Click += (_, _) => _ = GetUpdateAsync(installAfterDownload: false);
-        install.Click += (_, _) => _ = GetUpdateAsync(installAfterDownload: true);
-        buttons.Controls.AddRange([install, download, later]);
+            else if (!handingOffUpdate) downloadToken.Cancel();
+        }, 128);
+        var install = ActionButton("Update now", () => { }, 126);
+        install.Click += (_, _) => _ = InstallAsync();
+        install.Primary = true;
+        install.Margin = new(0, 2, 0, 2);
+        install.Enabled = canInstall;
+        later.Margin = new(0, 2, 8, 2);
+        // Tab order reads left to right; the flow layout anchors the primary action at the right.
+        install.TabIndex = 1;
+        later.TabIndex = 0;
+        buttons.Controls.AddRange([install, later]);
         grid.Controls.Add(buttons, 0, 6);
         dialog.Controls.Add(grid);
+        dialog.AcceptButton = canInstall ? install : later;
         dialog.CancelButton = later;
         dialog.FormClosing += (_, args) =>
         {
-            if (downloadToken is null) return;
-            downloadToken.Cancel();
-            args.Cancel = args.CloseReason == CloseReason.UserClosing && !exiting;
+            if (downloadToken is null || PendingInstaller is not null) return;
+            if (args.CloseReason == CloseReason.UserClosing && !exiting)
+            {
+                args.Cancel = true;
+                if (!handingOffUpdate) downloadToken.Cancel();
+            }
+            else if (!handingOffUpdate || exiting)
+                downloadToken.Cancel();
         };
-        dialog.FormClosed += (_, _) => updateDialog = null;
+        dialog.FormClosed += (_, _) =>
+        {
+            updateDialog = null;
+            refreshUpdateDialogTheme = null;
+        };
+        refreshUpdateDialogTheme = () =>
+        {
+            if (dialog.IsDisposed || updatePalette == palette) return;
+            updatePalette = palette;
+            dialog.BackColor = updatePalette.Background;
+            dialog.ForeColor = heading.ForeColor = notesHeading.ForeColor = updatePalette.Text;
+            versions.ForeColor = updatePalette.Muted;
+            status.ForeColor = statusIsError ? updatePalette.Error : updatePalette.Muted;
+            notes.ApplyTheme(updatePalette);
+            install.ApplyTheme(updatePalette);
+            later.ApplyTheme(updatePalette);
+            progress.Invalidate();
+            if (dialog.IsHandleCreated) SetTitleBar(dialog.Handle, updatePalette.Dark);
+        };
         dialog.Show(this);
 
-        async Task GetUpdateAsync(bool installAfterDownload)
+        void SetStatus(string message, bool error = false)
         {
-            if (downloadToken is not null || PendingInstaller is not null || exiting) return;
-            if (installAfterDownload && firmwareFlashing)
-            {
-                status.Text = "Wait for the ESP32 firmware operation to finish before updating Voltra.";
-                return;
-            }
+            if (statusIsError || error) tips.SetToolTip(status, error ? message : "");
+            statusIsError = error;
+            status.ForeColor = error ? updatePalette.Error : updatePalette.Muted;
+            status.Text = message;
+        }
 
-            string? savedPath = null;
-            if (!installAfterDownload)
+        async Task InstallAsync()
+        {
+            if (!canInstall || downloadToken is not null || PendingInstaller is not null || exiting) return;
+            if (firmwareFlashing)
             {
-                using var save = new SaveFileDialog
-                {
-                    Title = "Save verified Voltra update", FileName = release.Package!.Name,
-                    Filter = "Windows installer (*.exe)|*.exe", DefaultExt = "exe", AddExtension = true
-                };
-                if (save.ShowDialog(dialog) != DialogResult.OK) return;
-                savedPath = save.FileName;
+                SetStatus("Wait for the ESP32 firmware operation to finish before updating Voltra.", error: true);
+                return;
             }
 
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             downloadToken = cancellation;
-            install.Enabled = download.Enabled = false;
+            install.Enabled = false;
             later.Text = "Cancel download";
-            progress.Value = 0;
+            percent = 0;
             progress.Visible = true;
-            status.Text = "Verifying release information…";
+            progress.Invalidate();
+            SetStatus("Verifying release information…");
             string? stage = null;
             InnoUpdateInstaller? prepared = null;
             try
             {
-                if (installAfterDownload)
-                    stage = InnoUpdateInstaller.CreateStage();
-                string destination = savedPath ?? Path.Combine(stage!, release.Package!.Name);
+                stage = InnoUpdateInstaller.CreateStage();
+                string destination = Path.Combine(stage, release.Package!.Name);
                 var verified = await updates.DownloadAsync(release, destination, new Progress<int>(value =>
                 {
-                    if (dialog.IsDisposed || downloadToken != cancellation) return;
-                    progress.Value = value;
-                    status.Text = value == 100 ? "Verifying downloaded file…" : $"Downloading… {value}%";
+                    if (dialog.IsDisposed || downloadToken != cancellation || handingOffUpdate) return;
+                    percent = value;
+                    progress.Invalidate();
+                    SetStatus(value == 100 ? "Verifying downloaded file…" : $"Downloading… {value}%");
                 }), cancellation.Token);
                 if (dialog.IsDisposed || exiting) return;
-                if (!installAfterDownload)
-                {
-                    status.Text = $"Verified package saved · {Path.GetFileName(verified.Path)}";
-                    return;
-                }
 
-                status.Text = "Checking the staged installer…";
+                cancellation.Token.ThrowIfCancellationRequested();
+                handingOffUpdate = true;
+                later.Enabled = false;
+                SetStatus("Checking the staged installer…");
                 prepared = await InnoUpdateInstaller.PrepareAsync(verified, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (dialog.IsDisposed || exiting) return;
                 if (firmwareFlashing)
                 {
-                    status.Text = "Wait for the ESP32 firmware operation to finish before updating Voltra.";
+                    SetStatus("Wait for the ESP32 firmware operation to finish before updating Voltra.", error: true);
                     return;
                 }
                 PendingInstaller = prepared;
@@ -229,14 +266,15 @@ internal sealed partial class MixerForm
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
-                if (!dialog.IsDisposed) status.Text = "Download canceled.";
+                if (!dialog.IsDisposed) SetStatus("Download canceled.");
             }
             catch (Exception ex) when (IsUpdateError(ex))
             {
-                if (!dialog.IsDisposed) status.Text = "Unable to prepare the update. " + UpdateErrorMessage(ex);
+                if (!dialog.IsDisposed) SetStatus("Unable to prepare the update. " + UpdateErrorMessage(ex), error: true);
             }
             finally
             {
+                handingOffUpdate = false;
                 downloadToken = null;
                 prepared?.Dispose();
                 if (stage is not null) InnoUpdateInstaller.DeleteStage(stage);
@@ -244,7 +282,7 @@ internal sealed partial class MixerForm
                 {
                     progress.Visible = false;
                     later.Text = "Later";
-                    download.Enabled = canDownload;
+                    later.Enabled = true;
                     install.Enabled = canInstall;
                 }
             }

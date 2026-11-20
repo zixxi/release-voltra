@@ -11,7 +11,7 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
     private readonly float scale;
     private readonly EditField hex;
     private readonly ColorTrack plane, hue;
-    private readonly Panel preview;
+    private readonly ColorSample preview;
     private readonly Label error;
     private readonly MixerButton apply;
     private readonly Font bodyFont, titleFont;
@@ -52,9 +52,7 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
         hex = new EditField(theme, selection.ToHex(), "Accent HEX");
         hex.Editor.MaxLength = 32;
         hex.Editor.TextChanged += (_, _) => HexChanged();
-        preview = new Panel { AccessibleName = "Color preview" };
-        preview.Paint += (_, e) => FieldChrome.Draw(e.Graphics, preview.ClientRectangle, theme.Background,
-            selection.ToRgb(), theme.Line, Px(6));
+        preview = new ColorSample(theme, selection.ToRgb(), Px(6));
         error = new Label { ForeColor = theme.Error, TextAlign = ContentAlignment.MiddleLeft };
         var cancel = CreateButton("Cancel");
         apply = CreateButton("Apply");
@@ -107,29 +105,39 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
     {
         if (settingHex) return;
         string value = hex.Editor.Text.Trim();
-        apply.Enabled = ThemePalette.IsHex(value);
-        error.Text = apply.Enabled ? "" : "Enter a color in #RRGGBB format.";
-        if (!apply.Enabled) return;
-        selection = AccentColor.FromRgb(ColorTranslator.FromHtml(value), selection.Hue);
-        RefreshColor();
+        bool valid = ThemePalette.IsHex(value);
+        SetHexValidity(valid);
+        if (valid) UpdateSelection(AccentColor.FromRgb(ColorTranslator.FromHtml(value), selection.Hue));
     }
 
     private void SelectColor(AccentColor color)
     {
-        selection = color;
-        settingHex = true;
-        hex.Editor.Text = color.ToHex();
-        settingHex = false;
-        apply.Enabled = true;
-        error.Text = "";
-        RefreshColor();
+        UpdateSelection(color);
+        string value = color.ToHex();
+        if (hex.Editor.Text != value)
+        {
+            settingHex = true;
+            hex.Editor.Text = value;
+            settingHex = false;
+        }
+        SetHexValidity(true);
     }
 
-    private void RefreshColor()
+    private void SetHexValidity(bool valid)
     {
-        plane.Invalidate();
-        hue.Invalidate();
-        preview.Invalidate();
+        if (apply.Enabled != valid) apply.Enabled = valid;
+        string message = valid ? "" : "Enter a color in #RRGGBB format.";
+        if (error.Text != message) error.Text = message;
+    }
+
+    private void UpdateSelection(AccentColor color)
+    {
+        if (selection == color) return;
+        var previous = selection;
+        selection = color;
+        plane.SelectionChanged(previous, color);
+        hue.SelectionChanged(previous, color);
+        preview.SetColor(color.ToRgb());
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -177,6 +185,62 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
         }
     }
 
+    private sealed class ColorSample : Control
+    {
+        private readonly Color background;
+        private readonly int radius;
+        private readonly SolidBrush fill;
+        private readonly Pen border;
+        private GraphicsPath? outline;
+
+        internal ColorSample(ThemePalette theme, Color initial, int radius)
+        {
+            background = theme.Background;
+            this.radius = radius;
+            fill = new SolidBrush(initial);
+            border = new Pen(theme.Line);
+            AccessibleName = "Color preview";
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.Opaque, true);
+        }
+
+        internal void SetColor(Color color)
+        {
+            if (fill.Color == color) return;
+            fill.Color = color;
+            Invalidate();
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            outline?.Dispose();
+            outline = null;
+            base.OnSizeChanged(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(background);
+            if (Width < 3 || Height < 3) return;
+            outline ??= FieldChrome.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), radius);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.FillPath(fill, outline);
+            e.Graphics.DrawPath(border, outline);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                outline?.Dispose();
+                fill.Dispose();
+                border.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+
     private sealed class ColorTrack : Control
     {
         private static readonly Color[] Spectrum =
@@ -184,15 +248,24 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
         private static readonly float[] SpectrumStops = [0, 1f / 6, 2f / 6, 0.5f, 4f / 6, 5f / 6, 1];
         private readonly AccentColorPicker picker;
         private readonly bool hueOnly;
+        private readonly Pen border, ring, edge;
+        private readonly SolidBrush markerFill = new(Color.Black);
+        private GraphicsPath? outline;
+        private Bitmap? gradient;
+        private Color cachedHue;
 
         internal ColorTrack(AccentColorPicker picker, bool hueOnly)
         {
             this.picker = picker;
             this.hueOnly = hueOnly;
+            border = new Pen(picker.theme.Line);
+            ring = new Pen(Color.White, picker.Px(2));
+            edge = new Pen(Color.FromArgb(195, Color.Black), picker.Px(1));
             AccessibleName = hueOnly ? "Hue" : "Saturation and brightness";
             AccessibleRole = AccessibleRole.Slider;
             DoubleBuffered = true;
             ResizeRedraw = true;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.Opaque, true);
             TabStop = true;
             Cursor = hueOnly ? Cursors.Hand : Cursors.Cross;
         }
@@ -201,42 +274,84 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
             ? new(picker.Px(7), picker.Px(6), Width - 2 * picker.Px(7), Height - 2 * picker.Px(6))
             : Rectangle.Inflate(ClientRectangle, -1, -1);
 
-        protected override void OnPaint(PaintEventArgs e)
+        private static Color PureHue(AccentColor color) => new AccentColor(color.Hue, 1, 1).ToRgb();
+
+        internal void SelectionChanged(AccentColor previous, AccentColor current)
         {
-            Rectangle bounds = Track;
-            if (bounds.Width < 2 || bounds.Height < 2) return;
-            var graphics = e.Graphics;
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            var color = picker.selection;
-            Color pureHue = new AccentColor(color.Hue, 1, 1).ToRgb();
-            using var shape = FieldChrome.Rounded(bounds, picker.Px(hueOnly ? 7 : 8));
-            using var gradient = new LinearGradientBrush(bounds, Color.White, pureHue, LinearGradientMode.Horizontal);
             if (hueOnly)
-                gradient.InterpolationColors = new ColorBlend { Colors = Spectrum, Positions = SpectrumStops };
-            graphics.FillPath(gradient, shape);
+            {
+                if (previous.Hue == current.Hue) return;
+            }
+            else
+            {
+                if (previous.Hue != current.Hue && PureHue(previous) != PureHue(current))
+                {
+                    Invalidate();
+                    return;
+                }
+                if (previous.Saturation == current.Saturation && previous.Brightness == current.Brightness) return;
+            }
+
+            var dirty = Rectangle.Ceiling(RectangleF.Union(Marker(Track, previous), Marker(Track, current)));
+            int inset = picker.Px(4);
+            dirty.Inflate(inset, inset);
+            Invalidate(dirty);
+        }
+
+        private void EnsureGradient(Rectangle bounds, Color pureHue)
+        {
+            if (gradient is not null && cachedHue == pureHue) return;
+            gradient ??= new Bitmap(Width, Height);
+            outline ??= FieldChrome.Rounded(bounds, picker.Px(hueOnly ? 7 : 8));
+            using var graphics = Graphics.FromImage(gradient);
+            graphics.Clear(picker.theme.Background);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var saturation = new LinearGradientBrush(bounds, Color.White, pureHue, LinearGradientMode.Horizontal);
+            if (hueOnly)
+                saturation.InterpolationColors = new ColorBlend { Colors = Spectrum, Positions = SpectrumStops };
+            graphics.FillPath(saturation, outline);
             if (!hueOnly)
             {
                 using var shade = new LinearGradientBrush(bounds, Color.FromArgb(0, Color.Black),
                     Color.Black, LinearGradientMode.Vertical);
-                graphics.FillPath(shade, shape);
+                graphics.FillPath(shade, outline);
+            }
+            cachedHue = pureHue;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Rectangle bounds = Track;
+            var graphics = e.Graphics;
+            if (bounds.Width < 2 || bounds.Height < 2)
+            {
+                graphics.Clear(picker.theme.Background);
+                return;
             }
 
-            using var border = new Pen(Focused && ShowFocusCues ? picker.theme.Accent : picker.theme.Line);
-            graphics.DrawPath(border, shape);
+            var color = picker.selection;
+            Color pureHue = PureHue(color);
+            EnsureGradient(bounds, hueOnly ? Color.Red : pureHue);
+            graphics.DrawImageUnscaled(gradient!, 0, 0);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            border.Color = Focused && ShowFocusCues ? picker.theme.Accent : picker.theme.Line;
+            graphics.DrawPath(border, outline!);
+            var marker = Marker(bounds, color);
+            markerFill.Color = hueOnly ? pureHue : color.ToRgb();
+            graphics.FillEllipse(markerFill, marker);
+            graphics.DrawEllipse(ring, marker);
+            graphics.DrawEllipse(edge, RectangleF.Inflate(marker, picker.Px(2), picker.Px(2)));
+        }
 
+        private RectangleF Marker(Rectangle bounds, AccentColor color)
+        {
             float x = bounds.Left + (float)(hueOnly ? color.Hue : color.Saturation) * (bounds.Width - 1);
             float y = hueOnly ? bounds.Top + bounds.Height / 2f
                 : bounds.Top + (float)(1 - color.Brightness) * (bounds.Height - 1);
             int radius = picker.Px(6);
             x = Math.Clamp(x, radius + 1, Math.Max(radius + 1, Width - radius - 2));
             y = Math.Clamp(y, radius + 1, Math.Max(radius + 1, Height - radius - 2));
-            var marker = new RectangleF(x - radius, y - radius, radius * 2, radius * 2);
-            using var fill = new SolidBrush(hueOnly ? pureHue : color.ToRgb());
-            using var ring = new Pen(Color.White, picker.Px(2));
-            using var edge = new Pen(Color.FromArgb(195, Color.Black), picker.Px(1));
-            graphics.FillEllipse(fill, marker);
-            graphics.DrawEllipse(ring, marker);
-            graphics.DrawEllipse(edge, RectangleF.Inflate(marker, picker.Px(2), picker.Px(2)));
+            return new RectangleF(x - radius, y - radius, radius * 2, radius * 2);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -294,5 +409,32 @@ internal sealed class AccentColorPicker : Form, IMessageFilter
 
         protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
         protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            ReleaseGradient();
+            base.OnSizeChanged(e);
+        }
+
+        private void ReleaseGradient()
+        {
+            gradient?.Dispose();
+            gradient = null;
+            outline?.Dispose();
+            outline = null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                ReleaseGradient();
+                border.Dispose();
+                ring.Dispose();
+                edge.Dispose();
+                markerFill.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 }

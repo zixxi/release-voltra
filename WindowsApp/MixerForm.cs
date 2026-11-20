@@ -85,6 +85,7 @@ internal sealed partial class MixerForm : Form
         BackColor = palette.Background;
         ForeColor = palette.Text;
         UpdateTitleBar();
+        refreshUpdateDialogTheme?.Invoke();
 
         shell = Grid(3, 1);
         shell.ColumnStyles.Add(new(SizeType.Percent, 16));
@@ -835,6 +836,7 @@ internal sealed partial class MixerForm : Form
 
     private void ExitFromTray()
     {
+        if (handingOffUpdate && PendingInstaller is null) return;
         exiting = true;
         Close();
     }
@@ -847,7 +849,8 @@ internal sealed partial class MixerForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (firmwareFlashing && e.CloseReason == CloseReason.UserClosing)
+        if (e.CloseReason == CloseReason.UserClosing &&
+            (firmwareFlashing || (handingOffUpdate && PendingInstaller is null)))
         {
             exiting = false;
             e.Cancel = true;

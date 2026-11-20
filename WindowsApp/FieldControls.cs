@@ -293,7 +293,7 @@ internal static class FieldChrome
 
 internal sealed class MixerButton : Button
 {
-    private readonly ThemePalette theme;
+    private ThemePalette theme;
     private readonly UiMotion feedback;
     private readonly UiMotion selection;
     internal bool Navigation;
@@ -319,6 +319,14 @@ internal sealed class MixerButton : Button
     {
         selected = value;
         selection.Move(value ? 1 : 0);
+        Invalidate();
+    }
+
+    internal void ApplyTheme(ThemePalette value)
+    {
+        theme = value;
+        BackColor = value.Field;
+        ForeColor = value.Text;
         Invalidate();
     }
 

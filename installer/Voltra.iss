@@ -1,9 +1,10 @@
 ; Voltra Windows Installer
 ; Built with Inno Setup
-; Version 0.9.2
 
 #define MyAppName "Voltra"
-#define MyAppVersion "0.9.3"
+#ifndef MyAppVersion
+  #error MyAppVersion is supplied by Build-Installer.ps1.
+#endif
 #define MyAppPublisher "importsys"
 #define MyAppURL "https://github.com/zixxi/release-voltra"
 #define MyAppExeName "Voltra.exe"
@@ -38,18 +39,18 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 DisableProgramGroupPage=yes
 
 ; License
-LicenseFile=C:\Users\Isys\Documents\github\release-voltra\LICENSE
+LicenseFile=..\LICENSE
 
 ; Handle running applications during upgrades
 CloseApplications=yes
 RestartApplications=yes
 
 ; Installer output
-OutputDir=C:\Users\Isys\Documents\github\release-voltra\Installer\Output
+OutputDir=Output
 OutputBaseFilename={#MyAppName}-{#MyAppVersion}-win-x64
 
 ; Installer appearance
-SetupIconFile=C:\Users\Isys\Documents\github\release-voltra\WindowsApp\Voltra.ico
+SetupIconFile=..\WindowsApp\Voltra.ico
 WizardStyle=modern
 SolidCompression=yes
 Compression=lzma2
@@ -65,7 +66,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 
 ; Include all published Voltra files, dependencies and firmware flasher.
-Source: "C:\Users\Isys\Documents\github\release-voltra\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 

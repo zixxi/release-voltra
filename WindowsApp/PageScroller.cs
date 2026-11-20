@@ -18,6 +18,12 @@ internal sealed class PageScroller : Panel
     internal Control? Page { get; private set; }
     internal int Offset => offset;
 
+    internal void ApplyTheme(ThemePalette theme)
+    {
+        BackColor = theme.Background;
+        thumb.ApplyTheme(theme);
+    }
+
     internal void SetPage(Control? content)
     {
         if (Page is { } previous)
@@ -151,7 +157,7 @@ internal sealed class PageScroller : Panel
     private sealed class ScrollThumb : Control
     {
         private readonly PageScroller owner;
-        private readonly ThemePalette theme;
+        private ThemePalette theme;
         private readonly UiMotion hover;
         private int? grabOffset;
 
@@ -168,6 +174,12 @@ internal sealed class PageScroller : Panel
             Visible = false;
             AccessibleName = "Page scroll";
             AccessibleRole = AccessibleRole.ScrollBar;
+        }
+
+        internal void ApplyTheme(ThemePalette value)
+        {
+            theme = value;
+            Invalidate();
         }
 
         private Rectangle Lane
