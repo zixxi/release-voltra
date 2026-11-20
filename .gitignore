@@ -399,3 +399,113 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# ============================================================
+# Voltra - Project-specific exclusions
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Windows application publishing
+# ------------------------------------------------------------
+
+/publish/
+/WindowsApp/publish/
+
+
+# ------------------------------------------------------------
+# Inno Setup build output
+# ------------------------------------------------------------
+
+/Installer/Output/
+/Installer/output/
+
+
+# ------------------------------------------------------------
+# Python / PyInstaller
+# ------------------------------------------------------------
+
+# Isolated Python environment used to build the firmware flasher
+/.voltra-flasher/
+/.venv/
+/venv/
+
+# PyInstaller output
+/VoltraFirmware/Tools/build/
+/VoltraFirmware/Tools/dist/
+/VoltraFirmware/Tools/*.spec
+
+# Generated firmware flashing executable
+/WindowsApp/tools/VoltraFlasher.exe
+
+
+# ------------------------------------------------------------
+# ESP32 / Arduino build files
+# ------------------------------------------------------------
+
+/VoltraFirmware/build/
+/VoltraFirmware/.arduinoIDE/
+
+# Generated firmware binaries
+/VoltraFirmware/*.bin
+/VoltraFirmware/*.elf
+/VoltraFirmware/*.map
+
+
+# ------------------------------------------------------------
+# Firmware release artifacts
+# ------------------------------------------------------------
+
+/Firmware-Release/
+/Firmware-Releases/
+
+# Generated firmware packages in repository root
+/Voltra-S3-Zero-Firmware-*.bin
+/firmware-manifest.json
+/firmware-manifest.json.sig
+
+
+# ------------------------------------------------------------
+# Installer and update release packages
+# ------------------------------------------------------------
+
+# Generated Windows installers in repository root
+/Voltra-*-win-*.exe
+/Voltra-*-win-*.exe.json
+/Voltra-*-win-*.exe.json.sig
+
+
+# ------------------------------------------------------------
+# Signing keys and credentials
+# ------------------------------------------------------------
+
+# Private keys and certificate containers
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local signing directories
+/Voltra-Signing/
+/Signing/
+
+
+# ------------------------------------------------------------
+# Temporary files
+# ------------------------------------------------------------
+
+*.bak
+*.old
+*.orig
+*.temp
+
+
+# ------------------------------------------------------------
+# Keep documentation and screenshots
+# ------------------------------------------------------------
+
+!/assets/
+!/assets/**
+
+!/Installer/
+!/Installer/*.iss
