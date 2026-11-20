@@ -83,7 +83,7 @@ When the Windows application closes, the ESP32 can continue displaying supported
 - Windows startup integration.
 - Persistent user settings.
 
-![Voltra Hardware](assets/hardware.png)
+![Voltra Settings](assets/settings.png)
 ### Updates
 
 Voltra supports two independent update systems.
