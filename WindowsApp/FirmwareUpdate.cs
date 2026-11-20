@@ -109,19 +109,20 @@ internal sealed partial class UpdateService
     }
 
     internal async Task DownloadFirmwareAsync(FirmwareRelease release, DeviceFirmware device, string path,
-        IProgress<int> progress, CancellationToken token)
+        IProgress<int> progress, Action verifying, CancellationToken token)
     {
         if (!release.CanInstall(device) || !ReferenceEquals(release, cachedFirmware))
             throw new InvalidOperationException("There is no newer compatible firmware for this controller.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
-        await DownloadVerifiedAssetAsync(release.Package, release.Hash, path, progress, timeout.Token).ConfigureAwait(false);
+        await DownloadVerifiedAssetAsync(release.Package, release.Hash, path, progress, timeout.Token, verifying).ConfigureAwait(false);
     }
 
 }
 
 internal static class FirmwareFlasher
 {
+    private const string HelperProtocol = "VOLTRA_PROTOCOL 2";
     private static string ToolPath => Path.Combine(AppContext.BaseDirectory, "tools", "VoltraFlasher.exe");
     private static string? ToolHash => BuildInfo.Get("FirmwareFlasherSha256");
     internal static bool IsPackaged => ToolHash is { Length: 64 } && File.Exists(ToolPath);
@@ -135,13 +136,14 @@ internal static class FirmwareFlasher
             throw new CryptographicException("The bundled flashing tool failed its integrity check.");
     }
 
-    internal static async Task RunAsync(DeviceFirmware device, FirmwareRelease release, string path,
-        IProgress<string> progress)
+    internal static async Task<bool> RunAsync(DeviceFirmware device, FirmwareRelease release, string path,
+        string previousPort, IProgress<(string Stage, int? Percent)> progress, Action<string> log, CancellationToken token)
     {
         if (!release.CanInstall(device))
             throw new InvalidOperationException("Firmware is incompatible with this controller.");
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromMinutes(4));
         await VerifyToolAsync(timeout.Token).ConfigureAwait(false);
         var args = new ProcessStartInfo(ToolPath)
         {
@@ -149,32 +151,66 @@ internal static class FirmwareFlasher
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
-        foreach (string arg in new[] { device.Mac, path, Convert.ToHexString(release.Hash) })
+        foreach (string arg in new[] { device.Mac, path, Convert.ToHexString(release.Hash), previousPort })
             args.ArgumentList.Add(arg);
+        log($"Released {previousPort} for USB firmware update.");
         using var process = Process.Start(args) ?? throw new InvalidOperationException("Unable to start the flashing tool.");
         string? failure = null;
-        bool verified = false;
+        bool verified = false, supportedHelper = false;
+        string stage = "waiting";
         try
         {
             var error = process.StandardError.ReadToEndAsync(timeout.Token);
             while (await process.StandardOutput.ReadLineAsync(timeout.Token).ConfigureAwait(false) is { } line)
             {
-                if (line.StartsWith("VOLTRA_STATUS ", StringComparison.Ordinal)) progress.Report(line[14..]);
-                else if (line.StartsWith("VOLTRA_ERROR ", StringComparison.Ordinal)) failure = line[13..];
+                if (line == HelperProtocol) supportedHelper = true;
+                else if (line.StartsWith("VOLTRA_STAGE ", StringComparison.Ordinal))
+                {
+                    stage = line["VOLTRA_STAGE ".Length..];
+                    log($"Flasher stage: {stage}");
+                    if (supportedHelper) progress.Report((stage, null));
+                }
+                else if (line.StartsWith("VOLTRA_PROGRESS ", StringComparison.Ordinal) &&
+                    int.TryParse(line.AsSpan("VOLTRA_PROGRESS ".Length), out int percent) && percent is >= 0 and <= 100)
+                {
+                    if (supportedHelper && stage == "writing") progress.Report((stage, percent));
+                }
+                else if (line.StartsWith("VOLTRA_ERROR ", StringComparison.Ordinal))
+                {
+                    failure = line["VOLTRA_ERROR ".Length..];
+                    log(failure);
+                }
                 else if (line == "VOLTRA_VERIFIED") verified = true;
+                else if (line.Length > 0) log(line);
             }
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            string standardError = await error.ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(standardError)) log(standardError.Trim());
+            log($"Flasher exit code: {process.ExitCode}");
+            if (!supportedHelper)
+                throw new IOException("The bundled flashing tool could not start or uses an older protocol. Rebuild VoltraFlasher.exe and update its SHA-256.");
             if (process.ExitCode != 0 || !verified)
-                throw new IOException(failure ?? "The firmware tool stopped before verifying the flash. " + (await error.ConfigureAwait(false)).Trim());
+                throw new IOException(stage switch
+                {
+                    "waiting" or "connecting" or "checking-layout" when failure is not null => failure,
+                    "writing" => "Writing firmware stopped. Keep USB connected and follow the recovery steps below.",
+                    "verifying-flash" => "The firmware written to flash could not be verified.",
+                    _ => "The flashing tool stopped before verifying the flash."
+                });
+            return stage == "reset-needed";
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            throw new IOException("The firmware tool timed out. The controller may need recovery.");
+        }
+        finally
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                try { process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) when (process.HasExited) { }
                 await process.WaitForExitAsync().ConfigureAwait(false);
             }
-            throw new IOException("The firmware tool timed out. The controller may need recovery.");
         }
     }
 }

@@ -2,7 +2,7 @@
 #include <esp_mac.h>
 #include <esp_ota_ops.h>
 
-constexpr char FIRMWARE_VERSION[] = "0.1.1";
+constexpr char FIRMWARE_VERSION[] = "0.1.0";
 constexpr char HARDWARE_ID[] = "VOLTRA-S3-ZERO";
 constexpr int PROTOCOL_VERSION = 1;
 

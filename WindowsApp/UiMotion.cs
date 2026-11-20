@@ -15,8 +15,7 @@ internal sealed class UiMotion(Control owner, int duration, Action redraw) : IDi
     {
         if (target == value && !immediate) return;
         target = value;
-        if (immediate || !owner.IsHandleCreated || !owner.Visible || SystemInformation.HighContrast ||
-            !SystemParametersInfo(GetClientAreaAnimation, 0, out bool enabled, 0) || !enabled)
+        if (immediate || !owner.IsHandleCreated || !owner.Visible || !AnimationsEnabled())
         {
             timer?.Stop();
             Value = target;
@@ -32,6 +31,9 @@ internal sealed class UiMotion(Control owner, int duration, Action redraw) : IDi
         }
         timer.Start();
     }
+
+    internal static bool AnimationsEnabled() => !SystemInformation.HighContrast &&
+        SystemParametersInfo(GetClientAreaAnimation, 0, out bool enabled, 0) && enabled;
 
     private void Advance(object? sender, EventArgs e)
     {

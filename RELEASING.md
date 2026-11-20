@@ -154,12 +154,25 @@ Build the helper on a Windows packaging machine. This example uses Python 3.12
 on the packaging machine and bundles the runtime into the executable:
 
 ```powershell
+powershell -NoProfile -File .\VoltraFirmware\Tools\Build-VoltraFlasher.ps1
+```
+
+The script smoke-tests the frozen helper, copies it into the project, and builds
+Voltra with the SHA-256 of the exact executable. It can take
+`-UpdatePublicKey` with the existing base64-encoded release signing public
+key when it is supplied outside the project.
+
+For a manual or Authenticode-signed build, use these commands:
+
+```powershell
 py -3.12 -m venv .voltra-flasher
-.\.voltra-flasher\Scripts\python.exe -m pip install esptool==5.1.0 pyinstaller==6.16.0
+.\.voltra-flasher\Scripts\python.exe -m pip install esptool==5.1.0 pyserial==3.5 pyinstaller==6.16.0
 .\.voltra-flasher\Scripts\python.exe -m PyInstaller --onefile --name VoltraFlasher --collect-data esptool --hidden-import serial.tools.list_ports_windows VoltraFirmware\Tools\voltra_flash.py
 New-Item -ItemType Directory -Force WindowsApp\tools | Out-Null
 Copy-Item dist\VoltraFlasher.exe WindowsApp\tools\VoltraFlasher.exe
-(Get-FileHash WindowsApp\tools\VoltraFlasher.exe -Algorithm SHA256).Hash
+.\WindowsApp\tools\VoltraFlasher.exe --protocol-version
+$flasherHash = (Get-FileHash WindowsApp\tools\VoltraFlasher.exe -Algorithm SHA256).Hash
+dotnet build WindowsApp\Voltra.csproj -c Release "-p:VoltraFlasherSha256=$flasherHash"
 ```
 
 If the helper is Authenticode-signed, sign it before calculating that hash. Embed
@@ -171,6 +184,11 @@ installer. Use protected installation paths appropriate to the installer.
 Voltra never downloads a flashing utility. The source archive ships the helper
 source. A built Windows helper must be supplied by the release packager before
 in-app flashing is enabled.
+
+The current desktop build expects `VOLTRA_PROTOCOL 2` from the helper. Rebuild
+the executable whenever `voltra_flash.py` changes, then update the hash and
+rebuild the desktop app. Keep the existing release-signing public key set in
+the desktop build. The signed GitHub release format is unchanged.
 
 ### USB recovery
 
@@ -184,6 +202,12 @@ its ROM MAC even if Windows gives it a different COM port. If flashing has
 finished but the board stays in download mode, tap **RESET** with BOOT released.
 Voltra reports success only after the selected board reconnects and reports the
 expected version.
+
+If discovery fails, select **Copy details** in the update dialog. The report
+includes the handed-off COM port, detected USB VID/PID pairs and ROM probe
+results. For a persistent debug log, launch Voltra with
+`VOLTRA_DIAGNOSTICS=1`. Voltra writes the log to
+`%LOCALAPPDATA%\Voltra\mixer-diagnostics.log`.
 
 If writing was interrupted and the old sketch no longer starts, close Voltra,
 enter download mode using the same buttons, and upload a known-good Voltra

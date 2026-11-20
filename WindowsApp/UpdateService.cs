@@ -136,7 +136,7 @@ internal sealed partial class UpdateService : IDisposable
     }
 
     private async Task DownloadVerifiedAssetAsync(UpdateAsset package, byte[] expectedHash, string destination,
-        IProgress<int> progress, CancellationToken token)
+        IProgress<int> progress, CancellationToken token, Action? verifying = null)
     {
         long length = package.Size;
         destination = Path.GetFullPath(destination);
@@ -167,6 +167,7 @@ internal sealed partial class UpdateService : IDisposable
                     if (percent != lastPercent) progress.Report(lastPercent = percent);
                 }
             }
+            verifying?.Invoke();
             if (received != length || !CryptographicOperations.FixedTimeEquals(expectedHash, hash.GetHashAndReset()))
                 throw new CryptographicException("The package does not match its signed SHA-256 digest.");
             token.ThrowIfCancellationRequested();

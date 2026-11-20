@@ -28,15 +28,18 @@ internal sealed class DeviceLink : IDisposable
     private int rescan;
     private FirmwareSession? firmwareSession;
 
+    internal enum FirmwareConnection { Releasing, Flashing, Reconnecting }
+
     internal sealed class FirmwareSession(DeviceLink owner, DeviceFirmware device) : IDisposable
     {
         internal DeviceFirmware Device { get; } = device;
-        internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal volatile bool Reconnecting;
+        internal TaskCompletionSource<string> Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal volatile FirmwareConnection Phase;
+        internal string PreviousPort => Released.Task.GetAwaiter().GetResult();
 
         internal void Resume()
         {
-            Reconnecting = true;
+            Phase = FirmwareConnection.Reconnecting;
             owner.serialWake.Set();
         }
 
@@ -147,7 +150,7 @@ internal sealed class DeviceLink : IDisposable
             {
                 long now = Environment.TickCount64;
                 var updating = Volatile.Read(ref firmwareSession);
-                if (updating is { Reconnecting: false })
+                if (updating is { Phase: not FirmwareConnection.Reconnecting })
                 {
                     if (!updating.Released.Task.IsCompleted)
                     {
@@ -155,9 +158,17 @@ internal sealed class DeviceLink : IDisposable
                             updating.Released.TrySetException(new InvalidOperationException("The selected controller is no longer connected."));
                         else
                         {
-                            CloseSerial();
-                            Volatile.Write(ref state, new("Firmware update in progress", "OLED paused", levels, []));
-                            updating.Released.TrySetResult();
+                            try
+                            {
+                                CloseSerial(requireRelease: true);
+                                Volatile.Write(ref state, new("Firmware update in progress", "OLED paused", levels, []));
+                                updating.Phase = FirmwareConnection.Flashing;
+                                updating.Released.TrySetResult(desiredPort);
+                            }
+                            catch (Exception ex) when (IsPortError(ex))
+                            {
+                                updating.Released.TrySetException(new IOException($"Voltra could not release {desiredPort} for the update.", ex));
+                            }
                         }
                     }
                     serialWake.WaitOne(120);
@@ -393,6 +404,9 @@ internal sealed class DeviceLink : IDisposable
             if (!identityVerified && !line.StartsWith("MIX,", StringComparison.Ordinal)) return;
             if (identityVerified && DeviceFirmware.Parse(line, nonce) is { } detected)
             {
+                if (Volatile.Read(ref firmwareSession) is { Phase: FirmwareConnection.Reconnecting } updating &&
+                    detected.Mac != updating.Device.Mac)
+                    throw new IOException("This port belongs to a different Voltra controller.");
                 firmware = detected;
                 if (hasLevels) Establish();
                 return;
@@ -466,7 +480,7 @@ internal sealed class DeviceLink : IDisposable
         void Establish()
         {
             if (connected) return;
-            if (Volatile.Read(ref firmwareSession) is { Reconnecting: true } updating &&
+            if (Volatile.Read(ref firmwareSession) is { Phase: FirmwareConnection.Reconnecting } updating &&
                 (firmware is null || firmware.Mac != updating.Device.Mac)) return;
             connected = true;
             status = "Connected";
@@ -492,11 +506,11 @@ internal sealed class DeviceLink : IDisposable
             display = "OLED transfer stalled · retrying";
         }
 
-        void CloseSerial()
+        void CloseSerial(bool requireRelease = false)
         {
             if (serial is not null) serial.DataReceived -= onData;
             try { serial?.Dispose(); }
-            catch (Exception ex) when (IsPortError(ex)) { }
+            catch (Exception ex) when (!requireRelease && IsPortError(ex)) { }
             serial = null;
             buffer.Clear();
             firmware = null;

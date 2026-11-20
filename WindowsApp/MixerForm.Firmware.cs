@@ -127,111 +127,168 @@ internal sealed partial class MixerForm
     {
         if (firmwareFlashing || checkingFirmware || firmwareDevice is not { } device ||
             firmwareRelease is not { } release || !release.CanInstall(device) || !FirmwareFlasher.IsPackaged) return;
-        if (!ConfirmFirmware(device, release)) return;
 
         firmwareFlashing = true;
-        string directory = Path.Combine(Path.GetTempPath(), "VoltraFirmware", Guid.NewGuid().ToString("N"));
-        string path = Path.Combine(directory, release.Package.Name);
-        using var downloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        RefreshFirmwareControls();
         try
         {
-            await FirmwareFlasher.VerifyToolAsync(downloadCancellation.Token);
-            Directory.CreateDirectory(directory);
-            SetFirmwareMessage("Downloading signed firmware…");
-            await updates.DownloadFirmwareAsync(release, device, path,
-                new Progress<int>(percent =>
-                {
-                    if (firmwareFlashing && !exiting)
-                        SetFirmwareMessage(percent == 100 ? "Verifying firmware…" : $"Downloading firmware · {percent}%");
-                }), downloadCancellation.Token);
-
-            SetFirmwareMessage("Preparing the controller…");
-            using var session = await link.HoldForFirmwareAsync(device, downloadCancellation.Token);
-            if (MessageBox.Show(this, "Hold BOOT on the ESP32, tap RESET, then release BOOT. Keep the USB cable connected. Click OK when ready.",
-                "Enter USB download mode", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
-            {
-                SetFirmwareMessage("Firmware update canceled. If you pressed BOOT, tap RESET once.");
-                return;
-            }
-
-            SetFirmwareMessage("Entering USB download mode…");
-            await FirmwareFlasher.RunAsync(device, release, path,
-                new Progress<string>(message => { if (firmwareFlashing && !exiting) SetFirmwareMessage(message); }));
-            session.Resume();
-            SetFirmwareMessage("Reconnecting and checking the version. If needed, tap RESET once.");
-            string connectedPort = await ConfirmRebootAsync(device, release.Version, lifetime.Token);
-            if (config.PreferredPort.Length > 0 && !config.PreferredPort.Equals(connectedPort, StringComparison.OrdinalIgnoreCase))
-                Persist(config with { PreferredPort = connectedPort });
-            firmwareDevice = link.State.Firmware;
-            SetFirmwareMessage($"Firmware update completed · {release.Version}");
-        }
-        catch (OperationCanceledException) when (exiting) { }
-        catch (Exception ex) when (IsUpdateError(ex) || ex is TimeoutException or Win32Exception)
-        {
-            if (!exiting) SetFirmwareMessage("Firmware update stopped. " + UpdateErrorMessage(ex));
+            using var dialog = new FirmwareDialog(this);
+            dialog.ShowProgress(release.Version, "Preparing the firmware download…");
+            Task? workflow = null;
+            dialog.Shown += (_, _) => workflow = RunFirmwareWorkflowAsync(dialog, device, release);
+            dialog.ShowDialog(this);
+            if (workflow is not null) await workflow;
         }
         finally
         {
-            try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             firmwareFlashing = false;
             if (!exiting) RefreshFirmwareControls();
         }
     }
 
-    private async Task<string> ConfirmRebootAsync(DeviceFirmware device, Version expected, CancellationToken token)
+    private async Task RunFirmwareWorkflowAsync(FirmwareDialog dialog, DeviceFirmware device, FirmwareRelease release)
     {
-        long deadline = Environment.TickCount64 + 40_000;
-        while (Environment.TickCount64 < deadline)
+        var token = lifetime.Token;
+        bool retry = false;
+        try
         {
+            while (!token.IsCancellationRequested)
+            {
+                var diagnostics = new System.Text.StringBuilder();
+                void Log(string message)
+                {
+                    MixerDiagnostics.Log("Firmware: " + message);
+                    if (diagnostics.Length < 12_000)
+                        diagnostics.AppendLine(message[..Math.Min(message.Length, 12_000 - diagnostics.Length)]);
+                }
+
+                try
+                {
+                    Log($"Controller firmware {device.Version} → {release.Version}");
+                    if (retry)
+                    {
+                        dialog.ShowProgress(release.Version, "Waiting for the controller to return…");
+                        await WaitForFirmwareAsync(device, device.Version, TimeSpan.FromSeconds(8), dialog, token);
+                    }
+                    if (!await InstallFirmwareAsync(dialog, device, release, Log, token)) return;
+                    await dialog.ShowSuccessAsync(release.Version, token);
+                    return;
+                }
+                catch (Exception ex) when (!token.IsCancellationRequested &&
+                    (IsUpdateError(ex) || ex is TimeoutException or Win32Exception))
+                {
+                    Log(ex.GetBaseException().Message);
+                    string reason = ex is TimeoutException ? "Voltra timed out while releasing the serial connection."
+                        : ex is Win32Exception ? "Windows could not start or stop the bundled flashing tool."
+                        : UpdateErrorMessage(ex);
+                    SetFirmwareMessage("Firmware update failed. " + reason);
+                    retry = await dialog.ShowFailureAsync(reason, diagnostics.ToString(), token);
+                    if (!retry) return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally { if (!dialog.IsDisposed) dialog.Finish(); }
+    }
+
+    private async Task<bool> InstallFirmwareAsync(FirmwareDialog dialog, DeviceFirmware device, FirmwareRelease release,
+        Action<string> log, CancellationToken token)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "VoltraFirmware", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, release.Package.Name);
+        try
+        {
+            using var download = CancellationTokenSource.CreateLinkedTokenSource(token);
+            dialog.ShowProgress(release.Version, "Downloading firmware…", download.Cancel);
+            try
+            {
+                await FirmwareFlasher.VerifyToolAsync(download.Token);
+                Directory.CreateDirectory(directory);
+                var progress = new Progress<int>(percent =>
+                {
+                    if (percent < 100 && !download.IsCancellationRequested)
+                        dialog.ReportProgress("Downloading firmware…", percent);
+                });
+                IProgress<string> verification = new Progress<string>(stage => dialog.ReportProgress(stage));
+                await updates.DownloadFirmwareAsync(release, device, path, progress,
+                    () => verification.Report("Verifying firmware…"), download.Token);
+                download.Token.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException) when (download.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                SetFirmwareMessage("Firmware download canceled.");
+                return false;
+            }
+
+            if (!await dialog.ConfirmUpdateAsync(device, release, token))
+            {
+                SetFirmwareMessage("");
+                return false;
+            }
+
+            dialog.ShowProgress(release.Version, "Preparing the controller…");
+            using var session = await link.HoldForFirmwareAsync(device, token);
+            if (!await dialog.ShowBootInstructionsAsync(token))
+            {
+                SetFirmwareMessage("Firmware update canceled. If you entered download mode, tap RESET with BOOT released.");
+                return false;
+            }
+
+            dialog.ShowProgress(release.Version, "Waiting for the ESP32 bootloader…");
+            var flashProgress = new Progress<(string Stage, int? Percent)>(update =>
+            {
+                string? text = update.Stage switch
+                {
+                    "waiting" => "Waiting for the ESP32 bootloader…",
+                    "connecting" => "Connecting to the bootloader…",
+                    "checking-layout" => "Checking the controller and flash layout…",
+                    "writing" => "Writing firmware… Keep USB connected.",
+                    "verifying-flash" => "Verifying flash…",
+                    "restarting" => "Restarting the ESP32…",
+                    "reset-needed" => "Flash verified. Tap RESET with BOOT released.",
+                    _ => null
+                };
+                if (text is not null && update.Percent is not 100)
+                    dialog.ReportProgress(text, update.Percent);
+            });
+            bool manualReset = await FirmwareFlasher.RunAsync(device, release, path, session.PreviousPort, flashProgress, log, token);
+            session.Resume();
+            dialog.ReportProgress(manualReset
+                ? "Tap RESET with BOOT released to reconnect."
+                : "Reconnecting to the controller… If needed, tap RESET.");
+            var (port, installed) = await WaitForFirmwareAsync(device, release.Version, TimeSpan.FromSeconds(40), dialog, token);
+            if (config.PreferredPort.Length > 0 && !config.PreferredPort.Equals(port, StringComparison.OrdinalIgnoreCase))
+                Persist(config with { PreferredPort = port });
+            firmwareConnected = true;
+            firmwareDevice = installed;
+            SetFirmwareMessage($"Firmware update completed · {installed.Version}");
+            log($"Confirmed {installed.Version} from the selected controller on {port}.");
+            return true;
+        }
+        finally
+        {
+            try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private async Task<(string Port, DeviceFirmware Firmware)> WaitForFirmwareAsync(DeviceFirmware device, Version expected,
+        TimeSpan timeout, FirmwareDialog dialog, CancellationToken token)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.Elapsed < timeout)
+        {
+            token.ThrowIfCancellationRequested();
             var state = link.State;
             if (state.ConnectedPort is { } port && state.Firmware is { } current && current.Mac == device.Mac)
             {
+                dialog.ReportProgress("Confirming the installed firmware version…");
                 if (!FirmwareRelease.Supports(current) || current.Version != expected)
-                    throw new InvalidDataException($"The controller returned firmware {current.Version}. Expected {expected}.");
-                return port;
+                    throw new InvalidDataException($"The controller reported firmware {current.Version}. Expected {expected} on a supported layout.");
+                return (port, current);
             }
-            await Task.Delay(200, token);
+            await Task.Delay(150, token);
         }
-        throw new IOException("The new version could not be confirmed. Tap RESET without BOOT, then see USB recovery in RELEASING.md.");
-    }
-
-    private bool ConfirmFirmware(DeviceFirmware device, FirmwareRelease release)
-    {
-        using var dialog = new Form
-        {
-            Text = "Firmware update available", Icon = Icon, ShowInTaskbar = false,
-            StartPosition = FormStartPosition.CenterParent, ClientSize = new(530, 320),
-            MinimumSize = new(465, 290), AutoScaleMode = AutoScaleMode.Dpi,
-            BackColor = palette.Background, ForeColor = palette.Text, Font = Font
-        };
-        dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, palette.Dark);
-        var grid = Grid(1, 5);
-        grid.Padding = new(22, 15, 22, 15);
-        grid.RowStyles.Add(new(SizeType.Absolute, 35));
-        grid.RowStyles.Add(new(SizeType.Absolute, 30));
-        grid.RowStyles.Add(new(SizeType.Absolute, 25));
-        grid.RowStyles.Add(new(SizeType.Percent, 100));
-        grid.RowStyles.Add(new(SizeType.Absolute, 43));
-        grid.Controls.Add(Caption($"Voltra firmware {release.Version}", UiMetrics.Section, bold: true), 0, 0);
-        grid.Controls.Add(Caption($"Installed · {device.Version}    New version · {release.Version}", 10, muted: true), 0, 1);
-        grid.Controls.Add(Caption("What's new", 10, bold: true), 0, 2);
-        grid.Controls.Add(new TextBox
-        {
-            Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-            BackColor = palette.Field, ForeColor = palette.Text,
-            Text = string.IsNullOrWhiteSpace(release.Notes) ? "No release notes were provided." : release.Notes,
-            AccessibleName = "Firmware release notes"
-        }, 0, 3);
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-        var update = ActionButton("Update firmware", () => { }, 145, true);
-        update.DialogResult = DialogResult.OK;
-        var later = ActionButton("Later", () => { }, 90);
-        later.DialogResult = DialogResult.Cancel;
-        actions.Controls.AddRange([update, later]);
-        grid.Controls.Add(actions, 0, 4);
-        dialog.Controls.Add(grid);
-        dialog.CancelButton = later;
-        return dialog.ShowDialog(this) == DialogResult.OK;
+        throw new IOException("Voltra could not confirm the firmware version. Tap RESET with BOOT released and check the USB connection.");
     }
 }
