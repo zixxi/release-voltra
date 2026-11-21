@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Voltra.Linux.Views.MappingWindow" Title="Edit mappings" Width="654" Height="440"
+        MinWidth="490" MinHeight="360" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="23">
+    <StackPanel Spacing="6" Margin="0,0,0,14">
+      <TextBlock Text="Edit mappings" FontSize="23" FontWeight="SemiBold" />
+      <TextBlock Text="Assign an app and display name to each knob." Classes="muted" />
+    </StackPanel>
+    <ScrollViewer Grid.Row="1">
+      <StackPanel>
+        <Grid ColumnDefinitions="58,51*,49*" ColumnSpacing="9" Height="30">
+          <TextBlock Text="Knob" Classes="muted" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="App" Classes="muted" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2" Text="Display name" Classes="muted" VerticalAlignment="Center" />
+        </Grid>
+        <StackPanel Name="Rows" />
+        <Border Classes="rule" />
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
+      <Button Name="CancelMapping" Content="Cancel" Width="85" IsCancel="True" />
+      <Button Name="SaveMapping" Content="Save mappings" Classes="action" Width="130" IsDefault="True" />
+    </StackPanel>
+  </Grid>
+</Window>

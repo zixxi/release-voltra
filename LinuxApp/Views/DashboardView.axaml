@@ -1,32 +1,25 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Voltra.Linux.Views.DashboardView">
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="28,22,28,25" Spacing="22">
-      <TextBlock Classes="heading" Text="Dashboard" />
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-        <StackPanel Spacing="4">
-          <TextBlock Name="DeviceStatus" FontWeight="SemiBold" TextWrapping="Wrap" />
-          <TextBlock Name="DeviceDetail" Classes="muted" TextWrapping="Wrap" />
-        </StackPanel>
-        <TextBlock Grid.Column="1" Name="AudioStatus" TextWrapping="Wrap" Classes="muted" />
-      </Grid>
-      <Border BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,1,0,1" Padding="0,20">
-        <Grid Name="Gauges" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="5" />
-      </Border>
-      <Grid ColumnDefinitions="1.25*,*" ColumnSpacing="24">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="section" Text="Channel mappings" />
-          <StackPanel Name="MappingRows" Spacing="7" />
-          <Button Name="ApplyMappings" Content="Apply mappings" Classes="action" HorizontalAlignment="Left" />
-        </StackPanel>
-        <StackPanel Grid.Column="1" Spacing="10">
-          <TextBlock Classes="section" Text="OLED" />
-          <Border Background="#090B10" CornerRadius="8" Padding="10">
-            <Image Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="None" />
-          </Border>
-          <TextBlock Name="OledStatus" TextWrapping="Wrap" Classes="muted" />
-        </StackPanel>
-      </Grid>
-    </StackPanel>
-  </ScrollViewer>
+             xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.DashboardView">
+  <StackPanel>
+    <Grid Name="DisplayPanel" ColumnDefinitions="49*,1,51*" MinHeight="260">
+      <views:OledPreview Name="Preview" Margin="0,0,18,0" />
+      <Border Grid.Column="1" Margin="0,4,0,9" Background="{DynamicResource Line}" />
+      <StackPanel Grid.Column="2" Margin="24,0,0,0" Spacing="9">
+        <TextBlock Classes="section" Text="OLED" Height="30" />
+        <Grid ColumnDefinitions="108,*">
+          <TextBlock Text="Idle page" VerticalAlignment="Center" />
+          <ComboBox Grid.Column="1" Name="IdlePageMenu" Width="158"
+                    AutomationProperties.Name="OLED idle page" />
+        </Grid>
+        <TextBlock Classes="muted" Text="Knob overlay returns to idle after 3 seconds." TextWrapping="Wrap" />
+        <Button Name="OpenOled" Content="OLED settings" Width="134" HorizontalAlignment="Left" />
+      </StackPanel>
+    </Grid>
+    <Border Classes="rule" Margin="0,11" />
+    <Grid ColumnDefinitions="*,Auto" MinHeight="44">
+      <TextBlock Classes="section" Text="Live mixer" Margin="4,0,0,0" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="EditMapping" Content="Edit mappings" Width="132" VerticalAlignment="Center" />
+    </Grid>
+    <Grid Name="Gauges" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4" Height="224" />
+  </StackPanel>
 </UserControl>

@@ -9,10 +9,12 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.23" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <ProjectReference Include="../Voltra.Core/Voltra.Core.csproj" />
+    <AvaloniaResource Include="Assets/Fonts/*.ttf" />
+    <EmbeddedResource Include="Assets/Fonts/selawkb.ttf" LogicalName="Voltra.SelawikBold.ttf" />
+    <None Update="Assets/Fonts/Selawik-OFL.txt" TargetPath="Selawik-OFL.txt" CopyToPublishDirectory="PreserveNewest" />
     <AvaloniaResource Include="../WindowsApp/Voltra.ico" Link="Assets/Voltra.ico" />
     <None Include="../LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

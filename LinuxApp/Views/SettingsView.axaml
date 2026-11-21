@@ -1,88 +1,101 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.SettingsView">
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="28,22,28,25" Spacing="22" MaxWidth="830" HorizontalAlignment="Stretch">
-      <TextBlock Classes="heading" Text="Settings" />
-      <StackPanel Spacing="10">
-        <TextBlock Classes="section" Text="General" />
-        <ToggleSwitch Name="StartupToggle" Content="Launch Voltra at system startup" />
+  <StackPanel Spacing="8">
+    <TextBlock Classes="section" Text="General" Margin="0,6,0,0" />
+    <CheckBox Name="StartupToggle" Classes="switch" Content="Launch Voltra at system startup" />
+
+    <Border Classes="rule" Margin="0,3" />
+    <TextBlock Classes="section" Text="Appearance" />
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Theme" VerticalAlignment="Center" />
+      <Border Grid.Column="1" Classes="segments" HorizontalAlignment="Left" VerticalAlignment="Center">
+        <UniformGrid Columns="3" Width="249">
+          <RadioButton Name="ThemeDark" Classes="segment" GroupName="Theme" Content="Dark" />
+          <RadioButton Name="ThemeLight" Classes="segment" GroupName="Theme" Content="Light" />
+          <RadioButton Name="ThemeSystem" Classes="segment" GroupName="Theme" Content="System" />
+        </UniformGrid>
+      </Border>
+    </Grid>
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Accent library" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Name="Presets" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Custom accent" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBox Name="AccentInput" Width="125" Watermark="#RRGGBB" AutomationProperties.Name="Custom accent HEX" />
+        <Button Name="OpenColor" Classes="swatch" AutomationProperties.Name="Choose custom accent color"
+                ToolTip.Tip="Choose custom accent color" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+          <Border Name="AccentSample" CornerRadius="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+        </Button>
+        <Button Name="ApplyAccent" Content="Apply" Width="80" />
       </StackPanel>
-      <Border BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,1,0,0" Padding="0,15,0,0">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="section" Text="Appearance" />
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Theme" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1" Name="ThemeMenu" Width="140" />
-          </Grid>
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Accent library" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Name="Presets" Orientation="Horizontal" Spacing="6" />
-          </Grid>
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Custom accent" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7">
-              <TextBox Name="AccentInput" Width="110" Watermark="#RRGGBB" />
-              <Button Name="OpenColor">
-                <StackPanel Spacing="6" Orientation="Horizontal">
-                  <Border Name="AccentSample" Width="14" Height="14" CornerRadius="3" VerticalAlignment="Center"
-                          BorderThickness="1" BorderBrush="{DynamicResource Line}" Background="{DynamicResource VoltraAccent}" />
-                  <TextBlock Text="Pick color" />
-                </StackPanel>
-              </Button>
-              <Button Name="ApplyAccent" Content="Apply" />
+      <Popup Name="ColorPopup" PlacementTarget="{Binding #OpenColor}" Placement="BottomEdgeAlignedLeft" VerticalOffset="6"
+             IsLightDismissEnabled="True" ShouldUseOverlayLayer="True">
+        <Border Width="320" TextElement.FontFamily="{StaticResource VoltraFont}" TextElement.FontSize="14" CornerRadius="12" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                Background="{DynamicResource Workspace}" Padding="13" Name="PopupContent">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Custom accent" FontSize="16" FontWeight="SemiBold" />
+            <views:AccentPicker Name="Picker" Height="175" />
+            <Grid ColumnDefinitions="36,132,*" ColumnSpacing="7">
+              <TextBlock Text="HEX" Classes="muted" VerticalAlignment="Center" />
+              <TextBox Grid.Column="1" Name="PickerHex" AutomationProperties.Name="Accent HEX" MaxLength="32" />
+              <Border Grid.Column="2" Name="PickerSample" CornerRadius="6" BorderBrush="{DynamicResource Line}" BorderThickness="1" />
+            </Grid>
+            <TextBlock Name="PickerError" Classes="error" MinHeight="15" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button Name="CancelPicker" Content="Cancel" Width="82" />
+              <Button Name="ApplyPicker" Content="Apply" Classes="action" Width="85" />
             </StackPanel>
-          </Grid>
-          <Border Name="AccentPanel" IsVisible="False" Width="288" HorizontalAlignment="Left" Margin="155,0,0,0"
-                  Background="{DynamicResource Surface}" CornerRadius="8" Padding="13">
-            <StackPanel Spacing="8">
-              <views:AccentPicker Name="Picker" Height="155" />
-              <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                <Button Name="CancelPicker" Content="Cancel" />
-                <Button Name="ApplyPicker" Content="Apply" Classes="action" />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-          <TextBlock Name="AccentFeedback" Classes="muted" Margin="155,0,0,0" IsVisible="False" />
-        </StackPanel>
-      </Border>
-      <Border BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,1,0,0" Padding="0,15,0,0">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="section" Text="Knob mapping" />
-          <ToggleSwitch Name="SyncToggle" Content="Sync external volume changes" />
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Knob takeover" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1" Name="TakeoverMenu" Width="160" />
-          </Grid>
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Noise threshold" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1" Name="ThresholdMenu" Width="90" />
-          </Grid>
-        </StackPanel>
-      </Border>
-      <Border BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,1,0,0" Padding="0,15,0,0">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="section" Text="Device connection" />
-          <Grid ColumnDefinitions="155,*">
-            <TextBlock Text="Serial port" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="1" Name="PortMenu" MaxWidth="440" HorizontalAlignment="Stretch" />
-          </Grid>
-          <TextBlock Name="DeviceStatus" Classes="muted" TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
-      <Border BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,1,0,0" Padding="0,15,0,0">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="section" Text="About" />
-          <TextBlock Name="VersionLine" Classes="muted" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Name="CheckUpdates" Content="Check for updates" />
-            <Button Name="OpenRelease" Content="Open Linux release" Classes="action" IsVisible="False" />
           </StackPanel>
-          <TextBlock Name="UpdateStatus" Classes="muted" TextWrapping="Wrap" />
-          <ScrollViewer Name="NotesViewer" IsVisible="False" MaxHeight="175">
-            <TextBlock Name="ReleaseNotes" TextWrapping="Wrap" />
-          </ScrollViewer>
-        </StackPanel>
+        </Border>
+      </Popup>
+    </Grid>
+    <TextBlock Name="AccentFeedback" Classes="error" IsVisible="False" />
+
+    <Border Classes="rule" Margin="0,3" />
+    <TextBlock Classes="section" Text="Knob mapping" />
+    <CheckBox Name="FormatNames" Classes="switch" Content="Automatically format app names" />
+    <TextBlock Text="Example: spotify → Spotify" Classes="muted" Margin="0,-5,0,3" />
+    <CheckBox Name="SyncToggle" Classes="switch" Content="Sync external volume changes" />
+    <TextBlock Text="Preserve external changes until the physical knob takes control again." Classes="muted"
+               Margin="0,-5,0,3" TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Knob takeover mode" VerticalAlignment="Center" />
+      <Border Grid.Column="1" Name="TakeoverModes" Classes="segments" HorizontalAlignment="Left" VerticalAlignment="Center">
+        <UniformGrid Columns="2" Width="249">
+          <RadioButton Name="Immediate" Classes="segment" GroupName="Takeover" Content="Immediate" />
+          <RadioButton Name="SoftTakeover" Classes="segment" GroupName="Takeover" Content="Soft takeover" />
+        </UniformGrid>
       </Border>
-    </StackPanel>
-  </ScrollViewer>
+    </Grid>
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Knob movement threshold" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" Name="ThresholdMenu" Width="86" VerticalAlignment="Center" />
+    </Grid>
+
+    <Border Classes="rule" Margin="0,3" />
+    <TextBlock Classes="section" Text="Device connection" />
+    <Grid ColumnDefinitions="188,*" MinHeight="42">
+      <TextBlock Text="Preferred port" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" Name="PortMenu" Width="420" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+    </Grid>
+    <TextBlock Text="A specific port overrides automatic detection." Classes="muted" />
+    <TextBlock Name="DeviceStatus" Classes="muted" TextWrapping="Wrap" />
+
+    <Border Classes="rule" Margin="0,3" />
+    <TextBlock Classes="section" Text="About" />
+    <TextBlock Text="Voltra" FontSize="17" FontWeight="SemiBold" />
+    <TextBlock Name="VersionLine" Classes="muted" />
+    <TextBlock Name="UpdateStatus" Classes="muted" TextWrapping="Wrap" />
+    <WrapPanel ItemHeight="39" ItemSpacing="8">
+      <Button Name="CheckUpdates" Content="Check for updates" Width="152" />
+      <Button Name="ViewRepository" Content="View on GitHub" Width="135" />
+      <Button Name="OpenRelease" Content="Open Linux release" Classes="action" IsVisible="False" />
+    </WrapPanel>
+    <ScrollViewer Name="NotesViewer" IsVisible="False" MaxHeight="175">
+      <TextBlock Name="ReleaseNotes" TextWrapping="Wrap" />
+    </ScrollViewer>
+    <TextBlock Text="License · PolyForm-Noncommercial-1.0.0" Classes="muted" />
+  </StackPanel>
 </UserControl>

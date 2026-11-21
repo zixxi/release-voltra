@@ -1,0 +1,229 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{DynamicResource Workspace}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="FontFamily" Value="{StaticResource VoltraFont}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+    </Style>
+    <Style Selector="TextBlock.section">
+        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.error">
+        <Setter Property="Foreground" Value="{DynamicResource Error}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Border.rule">
+        <Setter Property="Background" Value="{DynamicResource Line}" />
+        <Setter Property="Height" Value="1" />
+    </Style>
+    <Style Selector="Border.segments">
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="3" />
+    </Style>
+
+    <Style Selector="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="11,0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter Name="PART_ContentPresenter" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}"
+                    Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True" />
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button:pointerover"><Setter Property="Background" Value="{DynamicResource ControlHover}" /></Style>
+    <Style Selector="Button:pressed"><Setter Property="Background" Value="{DynamicResource ControlPressed}" /></Style>
+    <Style Selector="Button:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="Button:disabled"><Setter Property="Opacity" Value=".53" /></Style>
+    <Style Selector="Button.action">
+        <Setter Property="Background" Value="{DynamicResource VoltraAccent}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentForeground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.action:pointerover"><Setter Property="Background" Value="{DynamicResource PrimaryHover}" /></Style>
+    <Style Selector="Button.action:pressed"><Setter Property="Background" Value="{DynamicResource PrimaryPressed}" /></Style>
+    <Style Selector="Button.action:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource AccentForeground}" /></Style>
+    <Style Selector="Button.nav">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="14,0,8,0" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="{DynamicResource ControlHover}" /><Setter Property="Foreground" Value="{DynamicResource Text}" /></Style>
+    <Style Selector="Button.nav:pressed"><Setter Property="Background" Value="{DynamicResource ControlPressed}" /></Style>
+    <Style Selector="Button.nav.selected"><Setter Property="Background" Value="{DynamicResource Selected}" /><Setter Property="Foreground" Value="{DynamicResource Text}" /></Style>
+    <Style Selector="Button.nav.selected:pointerover"><Setter Property="Background" Value="{DynamicResource Selected}" /></Style>
+    <Style Selector="Button.nav:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="Button.swatch"><Setter Property="Padding" Value="5" /><Setter Property="Width" Value="32" /><Setter Property="Height" Value="34" /></Style>
+    <Style Selector="Button.swatch.selected"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+
+    <Style Selector="TextBox">
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Padding" Value="9,0" />
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Text}" />
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Muted}" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" />
+        <Setter Property="BorderThickness" Value="{Binding BorderThickness, RelativeSource={RelativeSource TemplatedParent}}" />
+    </Style>
+    <Style Selector="ComboBox">
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="9,0" />
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource Muted}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="MaxDropDownHeight" Value="268" />
+    </Style>
+    <Style Selector="ComboBox:pointerover /template/ Border#Background"><Setter Property="BorderBrush" Value="{DynamicResource Muted}" /></Style>
+    <Style Selector="ComboBox:focus-within /template/ Border#Background"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="ComboBox /template/ Border#PopupBorder">
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style Selector="ComboBoxItem"><Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="8,4" /></Style>
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource ControlHover}" /></Style>
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource Selected}" /><Setter Property="Foreground" Value="{DynamicResource Text}" /></Style>
+
+    <Style Selector="CheckBox.switch">
+        <Setter Property="MinHeight" Value="43" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="SwitchRow" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="5">
+                    <Grid ColumnDefinitions="62,*" Margin="2,0">
+                        <Border Name="SwitchTrack" Background="{DynamicResource Line}" Width="48" Height="25"
+                                CornerRadius="13" Padding="3" HorizontalAlignment="Left">
+                            <Border Name="SwitchThumb" Background="{DynamicResource Text}" Width="19" Height="19"
+                                    CornerRadius="10" HorizontalAlignment="Left" />
+                        </Border>
+                        <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="CheckBox.switch:checked /template/ Border#SwitchTrack"><Setter Property="Background" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="CheckBox.switch:checked /template/ Border#SwitchThumb"><Setter Property="HorizontalAlignment" Value="Right" /><Setter Property="Background" Value="{DynamicResource AccentForeground}" /></Style>
+    <Style Selector="CheckBox.switch:pointerover /template/ Border#SwitchRow"><Setter Property="Background" Value="{DynamicResource ControlHover}" /></Style>
+    <Style Selector="CheckBox.switch:pressed /template/ Border#SwitchRow"><Setter Property="Background" Value="{DynamicResource ControlPressed}" /></Style>
+    <Style Selector="CheckBox.switch:focus-visible /template/ Border#SwitchRow"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="CheckBox.switch:disabled"><Setter Property="Opacity" Value=".53" /></Style>
+
+    <Style Selector="RadioButton.segment">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="MinHeight" Value="26" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter Name="Segment" Content="{TemplateBinding Content}" Padding="7,0" Background="Transparent"
+                    BorderBrush="Transparent" BorderThickness="1" CornerRadius="4"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.segment:checked /template/ ContentPresenter#Segment"><Setter Property="Background" Value="{DynamicResource Selected}" /></Style>
+    <Style Selector="RadioButton.segment:pointerover /template/ ContentPresenter#Segment"><Setter Property="Background" Value="{DynamicResource ControlHover}" /></Style>
+    <Style Selector="RadioButton.segment:pressed /template/ ContentPresenter#Segment"><Setter Property="Background" Value="{DynamicResource ControlPressed}" /></Style>
+    <Style Selector="RadioButton.segment:focus-visible /template/ ContentPresenter#Segment"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="RadioButton.segment:disabled"><Setter Property="Opacity" Value=".53" /></Style>
+
+    <Style Selector="RadioButton.idle">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="RadioRow" Background="Transparent" CornerRadius="5" BorderThickness="1" BorderBrush="Transparent">
+                    <Grid ColumnDefinitions="27,*" Margin="2,0">
+                        <Border Name="Ring" Width="16" Height="16" CornerRadius="8" BorderThickness="1"
+                                BorderBrush="{DynamicResource Muted}" HorizontalAlignment="Left">
+                            <Border Name="Dot" Width="8" Height="8" CornerRadius="4" IsVisible="False"
+                                    Background="{DynamicResource VoltraAccent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton.idle:checked /template/ Border#Ring"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+    <Style Selector="RadioButton.idle:checked /template/ Border#Dot"><Setter Property="IsVisible" Value="True" /></Style>
+    <Style Selector="RadioButton.idle:pointerover /template/ Border#RadioRow"><Setter Property="Background" Value="{DynamicResource ControlHover}" /></Style>
+    <Style Selector="RadioButton.idle:pressed /template/ Border#RadioRow"><Setter Property="Background" Value="{DynamicResource ControlPressed}" /></Style>
+    <Style Selector="RadioButton.idle:focus-visible /template/ Border#RadioRow"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>
+
+    <Style Selector="ScrollViewer">
+        <Setter Property="AllowAutoHide" Value="False" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+    <Style Selector="ScrollBar:vertical">
+        <Setter Property="MinWidth" Value="12" />
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Track Margin="0,5" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                       Value="{TemplateBinding Value, Mode=TwoWay}" ViewportSize="{TemplateBinding ViewportSize}"
+                       Orientation="Vertical" IsDirectionReversed="True">
+                    <Track.DecreaseButton>
+                        <RepeatButton Name="PART_PageUpButton" Focusable="False" Background="Transparent" />
+                    </Track.DecreaseButton>
+                    <Track.IncreaseButton>
+                        <RepeatButton Name="PART_PageDownButton" Focusable="False" Background="Transparent" />
+                    </Track.IncreaseButton>
+                    <Thumb Name="PageThumb" MinHeight="28" Width="12">
+                        <Thumb.Template>
+                            <ControlTemplate><Border Name="ThumbBody" Width="6" CornerRadius="3" Background="{DynamicResource ScrollThumb}" /></ControlTemplate>
+                        </Thumb.Template>
+                    </Thumb>
+                </Track>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ScrollBar:vertical /template/ RepeatButton">
+        <Setter Property="Template"><ControlTemplate><Border Background="Transparent" /></ControlTemplate></Setter>
+    </Style>
+    <Style Selector="Thumb#PageThumb:pointerover /template/ Border#ThumbBody"><Setter Property="Background" Value="{DynamicResource Muted}" /></Style>
+</Styles>

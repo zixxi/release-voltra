@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Voltra.Linux.Views.OledPreview">
+  <StackPanel>
+    <Border Height="35" Padding="4,0,0,0">
+      <TextBlock Name="TitleText" Classes="section" VerticalAlignment="Center" />
+    </Border>
+    <Border Background="Black" BorderThickness="1" BorderBrush="{DynamicResource Line}" HorizontalAlignment="Left">
+      <Viewbox Name="Viewport" Stretch="Uniform">
+        <Image Name="Pixels" Width="128" Height="64" RenderOptions.BitmapInterpolationMode="None" Stretch="Fill"
+               AutomationProperties.Name="128 by 64 OLED preview" />
+      </Viewbox>
+    </Border>
+    <TextBlock Name="DisplayStatus" Classes="muted" Margin="0,6,0,0" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

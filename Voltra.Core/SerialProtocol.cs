@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Voltra;
@@ -43,17 +42,7 @@ internal static partial class SerialProtocol
     internal static string PageCommand(int page, int flags, DateTimeOffset local, uint media) =>
         FormattableString.Invariant($"@P,{page},{flags},{local.ToUnixTimeSeconds() + (long)local.Offset.TotalSeconds},{media}");
 
-    internal static string Ascii(string text, int length)
-    {
-        var normalized = new StringBuilder(length);
-        foreach (char ch in text.Replace('ł', 'l').Replace('Ł', 'L').Normalize(NormalizationForm.FormD))
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue;
-            normalized.Append(ch is >= ' ' and <= '~' && ch != '@' ? ch : '?');
-            if (normalized.Length == length) break;
-        }
-        return normalized.ToString();
-    }
+    internal static string Ascii(string text, int length) => OledFrame.Ascii(text, length);
 
     [GeneratedRegex(@"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z")]
     internal static partial Regex StableVersion();

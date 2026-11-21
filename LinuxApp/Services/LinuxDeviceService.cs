@@ -5,8 +5,11 @@ using Voltra;
 
 namespace Voltra.Linux;
 
+internal enum ControllerConnection { Disconnected, Connecting, Connected, Error }
+
 internal sealed record DeviceSnapshot(string Status, string Display, string[] Ports, int[]? Levels = null,
-    string? Port = null, string? Firmware = null);
+    string? Port = null, string? Firmware = null, ControllerConnection Connection = ControllerConnection.Disconnected,
+    byte[]? Displayed = null);
 internal sealed record DisplayFrame(byte[] Pixels, DisplayPage Page, int Flags, uint Media);
 
 internal sealed class LinuxDeviceService : IAsyncDisposable
@@ -49,7 +52,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
                     string message = ex is UnauthorizedAccessException
                         ? $"Cannot open {port}. Check serial group permissions and that the port is free."
                         : $"{port}: {ex.Message}";
-                    Publish(message, "OLED waiting", ports);
+                    Publish(message, "OLED waiting", ports, connection: ControllerConnection.Error);
                 }
             }
             await Task.Delay(candidates.Length == 0 ? 900 : 700, token);
@@ -64,7 +67,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
         string status = "OLED waiting";
         try
         {
-            Publish($"Checking {port}…", status, ports);
+            Publish($"Checking {port}…", status, ports, connection: ControllerConnection.Connecting);
             serial.Open();
             try { serial.DtrEnable = true; }
             catch (IOException) { /* PTYs and some USB bridges don't expose modem signals. */ }
@@ -77,6 +80,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
             int[]? levels = null;
             var parsed = new int[5];
             DisplayFrame? sending = null, sent = null;
+            byte[]? displayed = null;
             Channel[]? configuredChannels = null;
             string[]? labels = null;
             string[] currentLabels = [];
@@ -124,6 +128,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
                         ready = standalone = false;
                         labels = null;
                         sent = sending = null;
+                        displayed = null;
                         pageState = null;
                         ackDeadline = 0;
                         status = "OLED not detected";
@@ -134,6 +139,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
                         if (++chunk == 4)
                         {
                             sent = sending;
+                            displayed = sending.Pixels;
                             sending = null;
                             lastFrame = now;
                             status = "OLED ready";
@@ -157,7 +163,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
                 if (identified && levels is not null)
                 {
                     lastPort = port;
-                    Publish("Controller connected", status, ports, levels, port, firmware);
+                    Publish("Controller connected", status, ports, levels, port, firmware, ControllerConnection.Connected, displayed);
                 }
                 var frame = Volatile.Read(ref display);
                 if (ready && levels is not null && frame is not null)
@@ -215,8 +221,9 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
         }
     }
 
-    private void Publish(string status, string oled, string[] ports, int[]? levels = null, string? port = null, string? firmware = null) =>
-        Volatile.Write(ref snapshot, new(status, oled, ports, levels, port, firmware));
+    private void Publish(string status, string oled, string[] ports, int[]? levels = null, string? port = null, string? firmware = null,
+        ControllerConnection connection = ControllerConnection.Disconnected, byte[]? displayed = null) =>
+        Volatile.Write(ref snapshot, new(status, oled, ports, levels, port, firmware, connection, displayed));
 
     internal static string[] FindPorts()
     {

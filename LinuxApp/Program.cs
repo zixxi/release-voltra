@@ -34,7 +34,7 @@ internal static class Program
                 return;
             }
 
-            AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().StartWithClassicDesktopLifetime(args);
+            AppBuilder.Configure<App>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
         }
     }
 }

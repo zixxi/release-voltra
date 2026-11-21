@@ -23,6 +23,7 @@ internal sealed record Settings
     public DisplayPage Page { get; init; }
     public SeparatorMode Separator { get; init; }
     public bool TwelveHour { get; init; }
+    public bool FormatAppNames { get; init; } = true;
     public bool Sync { get; init; } = true;
     public KnobTakeover Takeover { get; init; }
     public int NoiseThreshold { get; init; } = 2;

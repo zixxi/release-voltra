@@ -1,22 +1,18 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
-using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Security.Cryptography;
-using System.Buffers.Binary;
 
 namespace Voltra;
 
 internal sealed class OledRenderer : IDisposable
 {
-    internal const int Width = 128, Height = 64;
+    internal const int Width = OledFrame.Width, Height = OledFrame.Height;
     private readonly Bitmap bitmap = new(Width, Height, PixelFormat.Format32bppArgb);
     private readonly byte[] argb = new byte[Width * Height * 4];
-    private readonly Font small = new("Segoe UI", 10, FontStyle.Bold, GraphicsUnit.Pixel);
-    private readonly Font large = new("Segoe UI", 30, FontStyle.Bold, GraphicsUnit.Pixel);
-    private readonly Font medium = new("Segoe UI", 19, FontStyle.Bold, GraphicsUnit.Pixel);
+    private readonly Font small = new("Segoe UI", OledFrame.SmallSize, FontStyle.Bold, GraphicsUnit.Pixel);
+    private readonly Font large = new("Segoe UI", OledFrame.LargeSize, FontStyle.Bold, GraphicsUnit.Pixel);
+    private readonly Font medium = new("Segoe UI", OledFrame.MediumSize, FontStyle.Bold, GraphicsUnit.Pixel);
     private Image? media;
     private MemoryStream? mediaStream;
     private FrameDimension? gifDimension;
@@ -25,7 +21,6 @@ internal sealed class OledRenderer : IDisposable
     private long mediaStart;
     private string? lastKey;
     private byte[]? lastFrame;
-    private static readonly byte[] Dither = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
     internal bool HasMedia => media is not null;
     internal uint MediaId { get; private set; }
@@ -77,7 +72,7 @@ internal sealed class OledRenderer : IDisposable
         mediaStream?.Dispose();
         media = candidate;
         mediaStream = stream;
-        MediaId = Math.Max(1u, BinaryPrimitives.ReadUInt32LittleEndian(SHA256.HashData(content)));
+        MediaId = OledFrame.MediaId(content);
         gifDimension = dimension;
         frameEnds = ends;
         mediaStart = Environment.TickCount64;
@@ -89,7 +84,7 @@ internal sealed class OledRenderer : IDisposable
     {
         DateTime now = DateTime.Now;
         string key;
-        string top = "", center = "", bottom = "";
+        OledText text = default;
         bool drawMedia = config.Page == OledPage.Media && media is not null;
         int?[] values = config.Page == OledPage.Mixer ? state.WindowsLevels ?? new int?[5] : [];
         int separators = config.Page == OledPage.Mixer ? SeparatorGaps(config) : 0;
@@ -100,16 +95,12 @@ internal sealed class OledRenderer : IDisposable
                     ":" + string.Join(",", values) + ":" + separators;
                 break;
             case OledPage.Clock:
-                top = now.ToString("dddd");
-                center = now.ToString(config.TwelveHourClock ? "h:mm tt" : "HH:mm");
-                bottom = now.ToString("dd MMM yyyy");
-                key = "c:" + center + bottom;
+                text = OledFrame.Clock(now, config.TwelveHourClock);
+                key = "c:" + text.Center + text.Bottom;
                 break;
             case OledPage.Weather:
-                top = weather?.City ?? (config.City.Length == 0 ? "Weather" : config.City);
-                center = weather is null ? "-- °C" : $"{weather.Temperature:0} °C";
-                bottom = weather?.Condition ?? (config.City.Length == 0 ? "Enter a city" : "Waiting for weather");
-                key = "w:" + top + center + bottom;
+                text = OledFrame.Weather(config.City, weather);
+                key = "w:" + text.Top + text.Center + text.Bottom;
                 break;
             case OledPage.Media:
                 int frameIndex = 0;
@@ -125,21 +116,18 @@ internal sealed class OledRenderer : IDisposable
                     }
                 }
                 key = "g:" + frameIndex;
-                if (!drawMedia) { top = "Image / GIF"; bottom = "Choose a file on PC"; }
+                if (!drawMedia) text = OledFrame.NoMedia();
                 break;
             default:
-                var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
-                top = "PC uptime";
-                center = $"{(long)uptime.TotalHours}h {uptime.Minutes:00}m";
-                bottom = now.ToString("ddd, dd MMM");
-                key = "u:" + center + bottom;
+                text = OledFrame.Uptime(now, Environment.TickCount64);
+                key = "u:" + text.Center + text.Bottom;
                 break;
         }
 
         if (lastKey == key && lastFrame is not null) return lastFrame;
         if (config.Page == OledPage.Mixer)
         {
-            lastFrame = DrawMixer(config, values, separators);
+            lastFrame = OledFrame.Mixer(config.Channels.Select(channel => channel.Label).ToArray(), values, separators);
             lastKey = key;
             return lastFrame;
         }
@@ -150,18 +138,15 @@ internal sealed class OledRenderer : IDisposable
             if (drawMedia)
             {
                 canvas.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                double scale = Math.Min((double)Width / media!.Width, (double)Height / media.Height);
-                int width = Math.Clamp((int)Math.Round(media.Width * scale), 1, Width);
-                int height = Math.Clamp((int)Math.Round(media.Height * scale), 1, Height);
-                canvas.DrawImage(media, new Rectangle((Width - width) / 2, (Height - height) / 2, width, height),
+                var (x, y, width, height) = OledFrame.MediaBounds(media!.Width, media.Height);
+                canvas.DrawImage(media, new Rectangle(x, y, width, height),
                     0, 0, media.Width, media.Height, GraphicsUnit.Pixel);
             }
             else
             {
-                Center(canvas, top, small, 2);
-                Center(canvas, center, center.Length > 8 || (config.Page == OledPage.Clock && config.TwelveHourClock)
-                    ? medium : large, 14);
-                Center(canvas, bottom, small, 51);
+                Center(canvas, text.Top, small, OledFrame.TopY);
+                Center(canvas, text.Center, text.CenterSize == OledFrame.MediumSize ? medium : large, OledFrame.CenterY);
+                Center(canvas, text.Bottom, small, OledFrame.BottomY);
             }
         }
         lastFrame = PackPixels(drawMedia);
@@ -174,44 +159,7 @@ internal sealed class OledRenderer : IDisposable
         if (config.Separator == MixerSeparator.Disabled) return 0;
         if (config.Separator == MixerSeparator.ChannelFive) return 1 << 3;
 
-        int gaps = 0;
-        for (int channel = 0; channel < config.Channels.Length; channel++)
-        {
-            if (config.Channels[channel].Processes != Channel.SystemVolume) continue;
-            if (channel > 0) gaps |= 1 << (channel - 1);
-            if (channel < config.Channels.Length - 1) gaps |= 1 << channel;
-        }
-        return gaps;
-    }
-
-    private static byte[] DrawMixer(MixerSettings config, int?[] values, int separators)
-    {
-        byte[] frame = new byte[Width * Height / 8];
-        for (int channel = 0; channel < 5; channel++)
-        {
-            int y = channel * 11 + 1;
-            string title = config.Channels[channel].Label;
-            string label = Ascii(title, 18);
-            if (OledMixerFont.Measure(label) > 43)
-            {
-                do { label = label[..^1]; } while (OledMixerFont.Measure(label + ".") > 43);
-                label += ".";
-            }
-            OledMixerFont.Draw(frame, label, 1, y + 1);
-            int fill = (values[channel].GetValueOrDefault() * 56 + 50) / 100;
-            for (int x = 0; x < 56; x++)
-            {
-                OledMixerFont.Pixel(frame, 46 + x, y + 4);
-                if (x >= fill) continue;
-                OledMixerFont.Pixel(frame, 46 + x, y + 3);
-                OledMixerFont.Pixel(frame, 46 + x, y + 5);
-            }
-            string number = values[channel] is int value ? $"{value}%" : "--";
-            OledMixerFont.Draw(frame, number, 127 - OledMixerFont.Measure(number), y + 1);
-            if ((separators & (1 << channel)) != 0)
-                for (int x = 1; x < 127; x++) OledMixerFont.Pixel(frame, x, y + 9);
-        }
-        return frame;
+        return OledFrame.AutomaticGaps(config.Channels.Select(channel => channel.Processes == Channel.SystemVolume).ToArray());
     }
 
     private static void Center(Graphics canvas, string text, Font font, int y)
@@ -230,32 +178,10 @@ internal sealed class OledRenderer : IDisposable
         }
         finally { bitmap.UnlockBits(data); }
 
-        byte[] pixels = new byte[Width * Height / 8];
-        for (int y = 0; y < Height; y++)
-        {
-            for (int x = 0; x < Width; x++)
-            {
-                int i = (y * Width + x) * 4;
-                int luminance = (argb[i] * 29 + argb[i + 1] * 150 + argb[i + 2] * 77) >> 8;
-                int threshold = dither ? Dither[(y & 3) * 4 + (x & 3)] * 16 + 8 : 127;
-                if (luminance >= threshold)
-                    pixels[y * (Width / 8) + x / 8] |= (byte)(0x80 >> (x & 7));
-            }
-        }
-        return pixels;
+        return OledFrame.PackBgra(argb, Width * 4, dither);
     }
 
-    internal static string Ascii(string text, int length)
-    {
-        var ascii = new StringBuilder(length);
-        foreach (char character in text.Replace('ł', 'l').Replace('Ł', 'L').Normalize(NormalizationForm.FormD))
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark) continue;
-            ascii.Append(character is >= ' ' and <= '~' && character != '@' ? character : '?');
-            if (ascii.Length == length) break;
-        }
-        return ascii.ToString();
-    }
+    internal static string Ascii(string text, int length) => OledFrame.Ascii(text, length);
 
     public void Dispose()
     {

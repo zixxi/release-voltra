@@ -13,7 +13,14 @@ public sealed class AccentPicker : Control
     private IPointer? captured;
     internal event EventHandler? Changed;
     internal string Hex => color.ToHex();
-    private double PlaneHeight => Math.Max(1, Bounds.Height - 28);
+    private double PlaneHeight => Math.Max(1, Bounds.Height - 33);
+    private double drawnHue = -1;
+    private LinearGradientBrush? planeGradient;
+    private static readonly LinearGradientBrush Shade = Gradient(false, Colors.Transparent, Colors.Black);
+    private static readonly LinearGradientBrush Rainbow = Gradient(true, Colors.Red, Colors.Yellow, Colors.Lime,
+        Colors.Cyan, Colors.Blue, Colors.Magenta, Colors.Red);
+    private static readonly Pen OuterMarker = new(Brushes.Black, 3);
+    private static readonly Pen InnerMarker = new(Brushes.White, 1.5);
 
     internal void SetHex(string text)
     {
@@ -26,22 +33,25 @@ public sealed class AccentPicker : Control
     {
         base.Render(context);
         if (Bounds.Width <= 0) return;
-        var hue = (color with { Saturation = 1, Brightness = 1 }).ToRgb();
-        var hueColor = Color.FromRgb(hue.R, hue.G, hue.B);
+        if (planeGradient is null || drawnHue != color.Hue)
+        {
+            var hue = (color with { Saturation = 1, Brightness = 1 }).ToRgb();
+            planeGradient = Gradient(true, Colors.White, Color.FromRgb(hue.R, hue.G, hue.B));
+            drawnHue = color.Hue;
+        }
         var plane = new Rect(0, 0, Bounds.Width, PlaneHeight);
-        var track = new Rect(0, PlaneHeight + 10, Bounds.Width, 15);
-        context.DrawRectangle(Gradient(true, Colors.White, hueColor), null, plane, 7, 7);
-        context.DrawRectangle(Gradient(false, Color.FromArgb(0,0,0,0), Colors.Black), null, plane, 7, 7);
-        context.DrawRectangle(Gradient(true, Colors.Red, Colors.Yellow, Colors.Lime, Colors.Cyan,
-            Colors.Blue, Colors.Magenta, Colors.Red), null, track, 7, 7);
+        var track = new Rect(0, PlaneHeight + 7, Bounds.Width, 26);
+        context.DrawRectangle(planeGradient, null, plane, 6, 6);
+        context.DrawRectangle(Shade, null, plane, 6, 6);
+        context.DrawRectangle(Rainbow, null, track, 6, 6);
         Marker(new Point(Math.Clamp(color.Saturation * Bounds.Width, 5, Math.Max(5, Bounds.Width - 5)),
             Math.Clamp((1 - color.Brightness) * PlaneHeight, 5, Math.Max(5, PlaneHeight - 5))));
         Marker(new Point(Math.Clamp(color.Hue * Bounds.Width, 5, Math.Max(5, Bounds.Width - 5)), track.Center.Y));
 
         void Marker(Point point)
         {
-            context.DrawEllipse(null, new Pen(Brushes.Black, 3), point, 5, 5);
-            context.DrawEllipse(null, new Pen(Brushes.White, 1.5), point, 5, 5);
+            context.DrawEllipse(null, OuterMarker, point, 5, 5);
+            context.DrawEllipse(null, InnerMarker, point, 5, 5);
         }
     }
 
@@ -61,6 +71,7 @@ public sealed class AccentPicker : Control
     {
         var point = e.GetCurrentPoint(this);
         if (!point.Properties.IsLeftButtonPressed) return;
+        if (point.Position.Y > PlaneHeight && point.Position.Y < PlaneHeight + 7) return;
         captured = e.Pointer;
         hueDrag = point.Position.Y > PlaneHeight;
         captured.Capture(this);

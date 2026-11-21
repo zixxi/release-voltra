@@ -21,6 +21,7 @@
     <Content Include="tools/VoltraFlasher.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../Voltra.Core/OledFrame.cs" Link="OledFrame.cs" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
   </ItemGroup>

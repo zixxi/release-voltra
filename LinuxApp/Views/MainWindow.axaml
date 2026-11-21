@@ -1,28 +1,44 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.MainWindow"
-        Title="Voltra" Width="1080" Height="700" MinWidth="830" MinHeight="565"
+        Title="Voltra" Width="1100" Height="690" MinWidth="840" MinHeight="540"
         WindowStartupLocation="CenterScreen" Icon="avares://LinuxApp/Assets/Voltra.ico">
-  <Grid ColumnDefinitions="174,*">
-    <Border Grid.Column="0" Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource SoftLine}" BorderThickness="0,0,1,0">
-      <Grid Margin="14,24,14,16" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="22">
-          <TextBlock Text="Voltra" Margin="9,0,0,0" FontSize="26" FontWeight="SemiBold" />
+  <Grid ColumnDefinitions="16*,84*">
+    <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
+      <Grid Margin="10,20,10,14" RowDefinitions="Auto,*,Auto">
+        <Grid>
           <StackPanel Spacing="4">
             <Button Name="DashboardButton" Classes="nav selected" Content="Dashboard" />
             <Button Name="OledButton" Classes="nav" Content="OLED" />
             <Button Name="SettingsButton" Classes="nav" Content="Settings" />
           </StackPanel>
+          <Border Name="NavMarker" Width="3" Height="28" Margin="1,6,0,0" CornerRadius="1.5"
+                  Background="{DynamicResource VoltraAccent}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                  IsHitTestVisible="False" />
+        </Grid>
+        <StackPanel Grid.Row="2" Margin="10,0,6,0" Spacing="4">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+            <Ellipse Name="ConnectionDot" Width="8" Height="8" StrokeThickness="1" VerticalAlignment="Center" />
+            <TextBlock Name="ConnectionTitle" Grid.Column="1" FontSize="14" TextWrapping="Wrap" />
+          </Grid>
+          <TextBlock Name="ConnectionDetail" Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+          <TextBlock Name="AudioStatus" Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <TextBlock Name="VersionText" Grid.Row="2" Classes="muted" Margin="9,0,0,0" FontSize="12" />
       </Grid>
     </Border>
     <Grid Grid.Column="1" RowDefinitions="*,Auto">
-      <Grid>
-        <views:DashboardView Name="Dashboard" />
-        <views:OledView Name="Oled" IsVisible="False" />
-        <views:SettingsView Name="Preferences" IsVisible="False" />
-      </Grid>
-      <TextBlock Name="Notice" Grid.Row="1" Margin="24,0,24,12" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
+      <ScrollViewer Name="PageScroll">
+        <StackPanel Margin="36,22,40,22">
+          <Border Height="60" Padding="7,0,0,0">
+            <TextBlock Name="PageHeading" Text="Dashboard" FontSize="31" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </Border>
+          <Grid>
+            <views:DashboardView Name="Dashboard" />
+            <views:OledView Name="Oled" IsVisible="False" />
+            <views:SettingsView Name="Preferences" IsVisible="False" />
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+      <TextBlock Name="Notice" Grid.Row="1" Margin="32,0,26,12" Classes="error" TextWrapping="Wrap" IsVisible="False" />
     </Grid>
   </Grid>
 </Window>
