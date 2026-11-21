@@ -1,220 +1,435 @@
-# Voltra
+Voltra
 
-Voltra controls application and master volume from a five-knob ESP32-S3 mixer.
-The controller connects over USB serial and displays the selected idle page on
-its 128×64 OLED. After a hardware volume adjustment the firmware briefly shows
-the knob's label and percentage.
+Voltra is a customizable, cross-platform desktop audio mixer powered by an ESP32-S3 controller.
 
-Voltra has a Windows Forms app in `WindowsApp/` and an Avalonia app in
-`LinuxApp/`. See the [Linux setup and build guide](LinuxApp/README.md) for
-PipeWire audio control, dependencies, and deployment.
+Control the volume of individual applications and your system audio using five physical knobs, with real-time feedback on a 128×64 OLED display.
 
-## Visual Studio Community 2026
+Built with C# and .NET 10, Voltra supports Windows and Linux with platform-specific audio backends and a shared hardware protocol.
 
-1. In **Visual Studio Installer**, select **Visual Studio Community 2026 → Modify**.
-   Select the **.NET desktop development** workload and the **.NET 10** individual
-   component. Install the selected components.
-2. Extract this ZIP into a new, empty folder. Open **`Voltra.slnx`** in Visual Studio. The
-   **`WindowsApp`** folder contains the C# source.
-3. Visual Studio restores **NAudio.Wasapi** and **System.IO.Ports** from NuGet.
-   If restore does not start, right-click the solution in Solution Explorer and
-   select **Restore NuGet Packages**. The project already references both packages.
-4. For a new ESP32, upload the included **`VoltraFirmware/VoltraFirmware.ino`** using Arduino IDE and your
-   working ESP32-S3 board settings. This enables fast knob reports and the
-   existing ESP32 identity handshake. Leave `OLED_MODE` set to
-   `OLED_I2C_SETUP` for the four-pin display. If you adjusted calibration or knob
-   direction in your local sketch, copy those settings into the new sketch first.
-   An ESP32 already working with the previous app can use its current firmware.
-5. Close Arduino Serial Monitor and stop the Python mixer so the COM port is free.
-   Press **Ctrl+F5** in Visual Studio. The sidebar shows **Connected** after the
-   app finds the serial port carrying the mixer data. In **Settings**, select
-   a **Preferred port** to override automatic detection.
+"Voltra Dashboard" (assets/dashboard.png)
 
-## Using Voltra
+Features
 
-- **Apps**. Open **Edit mappings** on the Dashboard to edit all five knobs.
-  Play audio in an app to have it appear in the list, type executable names
-  manually, or choose **System volume** to control the default playback device.
-  Save when done. Separate multiple executables with commas or
-  semicolons. If the same executable is on multiple rows, the first row controls
-  it. The label sets the name shown during knob movement. Automatic app name
-  formatting is optional in **Settings**.
-- **Appearance**. Choose Dark, Light, or System, then select an accent or enter
-  a custom `#RRGGBB` color.
-- **Windows Volume Sync**. Enabled by default in **Settings → Knob mapping**.
-  The dashboard shows Windows volume. A short tick marks physical position when
-  a knob is waiting to take control. With **Soft takeover**, move the knob to
-  or across the current Windows level to regain control. With **Immediate**,
-  move it by at least the configured **Knob movement threshold**. Turning off
-  sync gives the physical knobs priority again. A dash means the mapped app has
-  no audio session. When a knob controls multiple sessions, the gauge follows
-  the most recently changed session until a hardware adjustment sets the group.
-- **Idle page**. Choose mixer levels, clock and date, current weather, an image
-  or GIF, or PC uptime. For weather, enter a city and click **Set city**.
-  Weather uses Open-Meteo with Celsius and refreshes every 15 minutes while its
-  page is active. The clock uses Windows local time.
-- **Mixer channel separator**. In **OLED → Mixer levels**, choose **Automatic
-  (Master)**, **Always separate channel 5**, or **Disabled**. The default places
-  lines between Master and its neighboring rows. The preview and the physical
-  OLED use the same image, including the last frame held after closing the app.
-- **Images and GIFs**. Choose a local PNG, JPEG, BMP or GIF up to 20 MB and
-  4096×4096. The image fits inside 128×64 with its aspect ratio preserved and is
-  converted to monochrome. GIFs loop at up to about 5–6 OLED updates per second.
-  Keep the source file in place for the app to load it again on restart.
-- **Tray**. Minimize or click **X** to hide the window while keeping the ESP32
-  connected. Double-click the tray icon to reopen it, or right-click the tray icon
-  and choose **Exit** to release the port and quit.
-- **Run again**. The app stores its settings in
-  `%LOCALAPPDATA%\Voltra\settings.json` and reconnects automatically or to
-  your selected port. On first launch, Voltra imports the previous
-  `%LOCALAPPDATA%\PurpleMixer` settings and last known port if there are no
-  Voltra settings. The previous files are kept and existing Voltra settings
-  take precedence.
-  You can also build the **Release** configuration
-  and run `WindowsApp\bin\Release\net10.0-windows\Voltra.exe` from its
-  output folder. A framework-dependent build uses the .NET 10 Desktop Runtime.
+Audio Control
 
-## About and updates
+- Five independently configurable physical volume knobs.
+- Per-application volume control.
+- Master system volume control.
+- Assign multiple applications to a single knob.
+- Real-time audio level synchronization.
+- Soft Takeover to prevent sudden volume jumps.
+- Immediate Takeover for direct hardware control.
+- Configurable movement and noise thresholds.
+- Automatic detection of active audio applications.
+- Automatic reconnection to the ESP32 controller.
+- Persistent channel mappings and preferences.
 
-In an installed copy, **Settings → General → Launch Voltra at Windows startup**
-controls whether Voltra starts in the system tray when you sign in. Open its
-window from the tray icon or launch Voltra manually. Setup reuses the saved
-startup preference on upgrades.
+Desktop Application
 
-**Settings → About** shows the executable version and update status. Builds
-configured with a public GitHub repository check shortly after startup and every
-six hours. For a newer release with signed assets for your architecture,
-the update dialog shows formatted release notes. **Update now** verifies the
-package, closes Voltra and opens the Inno Setup wizard. See
-[Release configuration](RELEASING.md) for build and release instructions.
+- Dark, Light, and System themes.
+- Customizable accent colors.
+- HEX color selection.
+- Dashboard with live volume indicators.
+- Configurable application mappings.
+- OLED configuration and preview.
+- Device connection settings.
+- System tray integration.
+- Optional launch at system startup.
+- Application update checking.
+- Firmware version detection.
 
-## Device firmware updates
+"Voltra Settings" (assets/settings.png)
 
-**Settings → Device firmware** shows the installed version on a compatible,
-versioned Voltra controller. It checks the separately versioned firmware release
-on GitHub. If an update is available, choose **Update firmware** and follow the
-BOOT and RESET prompt. Keep USB connected during writing and verification.
+OLED Display
 
-In-app flashing requires the packaged flashing helper and the pinned release
-signing key. An older sketch that reports no firmware version needs one manual
-USB upload of the included sketch before it can receive in-app updates.
-See [firmware releases and recovery](RELEASING.md#waveshare-esp32-s3-zero-firmware).
+Voltra includes configurable display pages for a 128×64 monochrome OLED.
 
-## OLED with the app closed
+Available pages:
 
-- **Mixer levels** shows the last received levels with a `HOLD` indicator.
-- **Clock & date** keeps time from the last PC sync while the ESP32 stays powered.
-  After loss of power it asks for a new sync.
-- **Weather** falls back to Clock & date and returns to live weather on reconnect.
-- **Image or GIF** holds the last received frame while powered. After a restart
-  it can restore a saved still frame of the last synced media file.
-- **PC uptime** shows that the PC is unavailable.
+- Mixer Levels — displays application labels and their current volume levels.
+- Clock & Date — shows the current time and date.
+- Weather — displays current weather information for a configured city.
+- Image & GIF — displays custom images and animated GIFs.
+- PC Uptime — displays system uptime.
 
-A normal tray exit signals the firmware immediately. After a crash or lost
-connection, the ESP32 uses a 6.5-second timeout. The selected page is stored in
-flash shortly after a change. This behavior requires firmware that supports the
-standalone OLED protocol, such as the included sketch.
+Additional functionality:
 
-If knob data stops, exit Voltra from the tray and open Arduino Serial
-Monitor at 115200. Turn a knob and check whether the `MIX,...` lines continue
-and their values change. Close Serial Monitor before reconnecting Voltra.
+- Automatic return to the selected idle page after adjusting a knob.
+- Configurable Master channel separators.
+- OLED framebuffer preview inside the desktop application.
+- Automatic synchronization between desktop software and the controller.
+- Standalone display behavior supported by compatible firmware.
 
-For a connection or latency investigation, set
-`VOLTRA_DIAGNOSTICS=1` in the app's environment before launching it.
-The bounded log is `%LOCALAPPDATA%\Voltra\mixer-diagnostics.log`.
-It records discovery, port opening, identity verification, reconnect errors,
-input processing timing, page transition timing, and takeover changes. Desktop processing timing
-starts at the received knob packet and excludes physical ADC and USB latency.
+"Voltra OLED" (assets/oled.png)
 
-## Wiring
+Supported Platforms
 
-For each potentiometer, connect one outer leg to **3V3**, the other to **GND**,
-and the middle leg (wiper) to its GPIO. All parts share ESP32 ground.
+Platform| Status| Audio Backend| Interface
+Windows 10/11| Supported| WASAPI| Windows Forms
+Linux x64| Experimental| PipeWire / pipewire-pulse| Avalonia UI
+macOS| Not yet supported| —| —
 
-| Knob | ESP32-S3 GPIO | Example app |
-| --- | --- | --- |
-| 1 | 11 | Spotify |
-| 2 | 7 | Discord |
-| 3 | 8 | Minecraft Java |
-| 4 | 9 | Chrome |
-| 5 | 10 | System volume |
+Both desktop applications communicate with the same ESP32-S3 firmware over USB Serial.
 
-These assignments are for the Waveshare ESP32-S3-Zero.
+The Linux version is currently under active development. Its interface and platform integration may differ from the Windows version.
 
-### 128×64 OLED wiring
+Hardware Requirements
 
-Check the display listing for its **controller, interface and supply voltage**.
-The table assumes a module with a 3.3 V-compatible power input. Use the module
-pin labels, since their order can vary.
+Voltra is designed for the Waveshare ESP32-S3-Zero, using:
 
-If your 1.96-inch panel is listed as a 410×502 QSPI AMOLED (for example with a
-CO5300 driver), use `OLED_OFF` to run the mixer while you identify the breakout.
-That panel requires its own driver and wiring.
+- ESP32-S3 microcontroller.
+- Five B10K potentiometers.
+- 128×64 I²C OLED display.
+- USB data connection.
 
-| Module signal | I²C OLED | SPI SSD1309 OLED |
-| --- | --- | --- |
-| VCC | 3V3 | 3V3 |
-| GND | GND | GND |
-| SDA / DIN / MOSI | GPIO13 (SDA) | GPIO8 (DIN / MOSI) |
-| SCL / CLK / SCK | GPIO12 (SCL) | GPIO9 (CLK / SCK) |
-| CS | — | GPIO10 |
-| DC / A0 | — | GPIO11 |
-| RES / RST | — | GPIO12 |
+GPIO Configuration
 
-On some SPI modules, the clock and data pins are printed as SCL and SDA. Use the
-SPI column if the module also exposes CS and DC and is configured for SPI.
+Component| GPIO
+Potentiometer 1| GPIO11
+Potentiometer 2| GPIO7
+Potentiometer 3| GPIO8
+Potentiometer 4| GPIO9
+Potentiometer 5| GPIO10
+OLED SCL| GPIO12
+OLED SDA| GPIO13
 
-For the four-pin I²C module, leave `OLED_MODE` set to `OLED_I2C_SETUP`. The
-sketch checks 0x3C and 0x3D and starts with the SSD1306 driver unless a different
-driver was saved. An I²C reply confirms that the display communicates. The
-address alone cannot identify its controller.
+Each potentiometer's center pin connects to its assigned GPIO. The outer pins connect to 3.3V and GND.
 
-1. Close the Windows mixer, then open Serial Monitor at 115200 after upload.
-2. Send `?` to check the display. Look for an `OLED:` line among the knob data.
-3. If an address replies but the screen is blank or garbled, send `1` for
-   SSD1306, `2` for SH1106, or `3` for SSD1309. Wait to see the five bars after
-   each try. When they look right, send `s` to save the selection across resets.
-4. If neither address replies, check that VCC is on 3V3, GND on GND, SDA on
-   GPIO13 and SCL on GPIO12. If the wiring matches, check the display's model and
-   its specified power and bus requirements.
+The OLED uses I²C and shares the controller's 3.3V power and ground connections.
 
-Close Serial Monitor before starting the Windows mixer again. For a 128×64
-SSD1309 with SPI, select `OLED_SSD1309_SPI`. For testing without display
-support, choose `OLED_OFF`. If using the optional SPI configuration on the
-S3-Zero, remap its pins to avoid the potentiometer GPIOs.
+Check that your OLED module supports 3.3V operation before connecting it.
 
-## Arduino IDE
+Installation
 
-1. Install **esp32 by Espressif Systems** in Boards Manager and **U8g2** in
-   Library Manager.
-2. Open `VoltraFirmware/VoltraFirmware.ino`. You can put or rename the outer
-   project folder anywhere. Arduino IDE requires the inner sketch folder and
-   its primary `.ino` file to have the same name.
-3. Select your ESP32-S3 board (or **ESP32S3 Dev Module** for a generic S3).
-   For a native USB connector, enable **Tools → USB CDC On Boot**. If using a
-   USB-to-UART bridge, use its COM port and leave USB CDC On Boot disabled.
-4. Connect a USB data cable, select the COM port, then upload.
-5. Optional test: set Serial Monitor to 115200 baud. You should see lines such
-   as `MIX,0,32,50,75,100`. Close Serial Monitor before running the PC script.
+Windows
 
-## Optional Python mixer
+1. Open the "GitHub Releases" (https://github.com/zixxi/release-voltra/releases) page.
+2. Download the latest Windows installer, named similar to "Voltra-VERSION-win-x64.exe".
+3. Run the installer.
+4. Launch Voltra.
+5. Connect the ESP32-S3-Zero using a USB data cable.
+6. Wait for automatic device detection.
+7. Configure your five channel mappings.
 
-Open PowerShell in the extracted folder and run the following with Python installed.
-Use this as a fallback if you only want USB volume control.
+Voltra is installed for the current Windows user without requiring administrator privileges.
 
-```powershell
-py -m pip install pyserial pycaw
-py pc_mixer.py --list-apps
-py pc_mixer.py COM5
-```
+Application settings are stored in:
 
-Start audio in the apps before running `--list-apps`. Set their executable names
-in `APPS` at the top of `pc_mixer.py` and change `COM5` to your board's port.
-To rename the OLED rows, edit `APP_LABELS` in the sketch (up to seven ASCII
-characters per row) and upload again. The example row named Game maps to
-`javaw.exe`, which also covers other Java apps with that executable name.
+%LOCALAPPDATA%\Voltra\
 
-Keep PowerShell open while using the mixer. If a knob works backward, set its
-`REVERSED` entry to `true`. If it cannot reach 0% or 100%, adjust that knob's
-`RAW_MIN` and `RAW_MAX`. Some travel near the top can read as 100% because
-3.3 V exceeds the ESP32-S3 ADC's measurable range at its highest attenuation.
+Linux
+
+The Linux version requires a desktop environment with PipeWire, WirePlumber, and the PulseAudio compatibility service ("pipewire-pulse").
+
+Ubuntu and Fedora are the initial target distributions.
+
+Install dependencies
+
+On Ubuntu:
+
+sudo apt update
+sudo apt install pulseaudio-utils
+
+On Fedora:
+
+sudo dnf install pulseaudio-utils
+
+Verify that PipeWire's PulseAudio compatibility service is available:
+
+pactl info
+
+The server should identify itself as PulseAudio running on PipeWire.
+
+Download and run
+
+Download the Linux x64 archive from "GitHub Releases" (https://github.com/zixxi/release-voltra/releases) when a Linux package is available.
+
+Extract the archive:
+
+mkdir -p ~/Applications/Voltra
+tar -xzf Voltra-VERSION-linux-x64.tar.gz -C ~/Applications/Voltra
+
+Then run:
+
+cd ~/Applications/Voltra
+chmod +x ./LinuxApp
+./LinuxApp
+
+The commands assume the executable is directly inside the extracted directory.
+
+The self-contained Linux distribution includes the required .NET runtime.
+
+USB Serial Permissions
+
+On Linux, the ESP32 may appear as:
+
+/dev/ttyACM0
+
+Or through a persistent device path:
+
+/dev/serial/by-id/
+
+If Voltra cannot access the serial device, check its permissions:
+
+ls -l /dev/ttyACM0
+
+On systems where the device belongs to the "dialout" group, add your user:
+
+sudo usermod -aG dialout "$USER"
+
+Log out completely and log back in.
+
+Verify your membership:
+
+id -nG
+
+The output should include "dialout".
+
+Run Voltra as your normal user. Administrator privileges should not be required.
+
+Linux Settings
+
+Configuration files are stored in:
+
+~/.config/Voltra/
+
+When "XDG_CONFIG_HOME" is set, Voltra uses that location instead.
+
+Linux startup integration uses an XDG Autostart entry.
+
+System tray functionality depends on the desktop environment and available StatusNotifier/AppIndicator support.
+
+Device Firmware
+
+Voltra uses firmware designed for the ESP32-S3-Zero.
+
+The firmware handles:
+
+- Analog potentiometer readings.
+- USB Serial communication.
+- Device identification.
+- OLED rendering and synchronization.
+- Display page persistence.
+- Connection timeout behavior.
+- Firmware version reporting.
+
+Initial Firmware Installation
+
+A new controller requires an initial firmware upload.
+
+1. Install "Arduino IDE" (https://www.arduino.cc/en/software).
+2. Install esp32 by Espressif Systems through Boards Manager.
+3. Install the U8g2 library.
+4. Open:
+
+VoltraFirmware/VoltraFirmware.ino
+
+5. Select the appropriate ESP32-S3 board configuration.
+6. Enable USB CDC On Boot when using the native USB interface.
+7. Select the correct USB port.
+8. Compile and upload the firmware.
+
+Once uploaded, the controller should communicate with the desktop application over USB Serial.
+
+The default communication speed is 115200 baud.
+
+Firmware Updates
+
+The Windows application includes a firmware update system for supported controllers.
+
+Its update process includes:
+
+- Firmware version detection.
+- Hardware compatibility verification.
+- Signed update manifest verification.
+- SHA-256 integrity verification.
+- Guided bootloader entry.
+- Firmware flashing and verification.
+- Automatic reconnection after updating.
+
+Firmware releases use the dedicated GitHub release tag:
+
+"firmware-s3-zero"
+
+Firmware updates are separate from desktop application updates.
+
+Linux firmware flashing is not currently supported through the desktop application. Use the existing manual firmware workflow when necessary.
+
+Application Updates
+
+Windows
+
+Voltra can check GitHub for new stable releases.
+
+The Windows update mechanism verifies signed release metadata and installer integrity before proceeding.
+
+A typical Windows release contains:
+
+Voltra-VERSION-win-x64.exe
+Voltra-VERSION-win-x64.exe.json
+Voltra-VERSION-win-x64.exe.json.sig
+
+The manifest uses SHA-256 checksums and an RSA-PSS signature.
+
+The private signing key is not included in the application or repository.
+
+Linux
+
+The Linux version supports checking for compatible application releases.
+
+Available updates can be downloaded and installed manually.
+
+Automatic Linux package installation is not currently implemented.
+
+Building from Source
+
+Voltra uses .NET 10.
+
+Repository structure:
+
+release-voltra/
+├── WindowsApp/
+├── LinuxApp/
+├── Voltra.Core/
+├── VoltraFirmware/
+├── Installer/
+├── assets/
+├── Directory.Build.props
+├── Voltra.slnx
+├── README.md
+├── RELEASING.md
+└── LICENSE
+
+Windows Build
+
+Requirements:
+
+- Windows 10/11.
+- .NET 10 SDK.
+- Visual Studio with .NET desktop development support, or another compatible .NET development environment.
+
+Build:
+
+dotnet build .\WindowsApp\Voltra.csproj -c Release
+
+Publish:
+
+dotnet publish .\WindowsApp\Voltra.csproj -c Release -r win-x64 --self-contained true -o .\publish\win-x64
+
+The repository also includes a Windows installer build script:
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Installer.ps1
+
+Installer packaging uses Inno Setup.
+
+Linux Build
+
+Requirements:
+
+- .NET 10 SDK.
+- Linux desktop environment with the required graphics libraries.
+- PipeWire-compatible audio services.
+
+Run from source:
+
+dotnet run --project LinuxApp/LinuxApp.csproj
+
+Build:
+
+dotnet build LinuxApp/LinuxApp.csproj -c Release
+
+Publish a self-contained Linux x64 application:
+
+dotnet publish LinuxApp/LinuxApp.csproj -c Release -r linux-x64 --self-contained true -o publish/linux-x64
+
+Run the published application:
+
+cd publish/linux-x64
+chmod +x ./LinuxApp
+./LinuxApp
+
+A Linux publish operation may also be performed from Windows using the .NET SDK, but the resulting application must be tested on Linux.
+
+Shared Components
+
+"Voltra.Core" contains reusable platform-independent components shared between desktop implementations.
+
+Platform-specific responsibilities remain separated:
+
+- WindowsApp — Windows Forms, WASAPI, Windows integration.
+- LinuxApp — Avalonia, PipeWire integration, XDG desktop integration.
+- Voltra.Core — shared application logic and models.
+- VoltraFirmware — ESP32 device firmware.
+
+Troubleshooting
+
+Controller Not Detected
+
+- Use a USB cable that supports data transfer.
+- Close Arduino Serial Monitor and other programs using the serial port.
+- Confirm that the ESP32 firmware is running.
+- Check the selected device in Voltra's Settings.
+- On Linux, verify access to "/dev/ttyACM0" and membership in the required serial device group.
+- Reconnect the controller and restart Voltra if necessary.
+
+Applications Not Appearing
+
+Audio applications generally need to have an active playback stream before the operating system exposes them for individual volume control.
+
+Start audio playback in the target application and refresh or reapply its mapping.
+
+Linux Audio Not Working
+
+Verify the PipeWire compatibility service:
+
+pactl info
+
+List available playback streams:
+
+pactl list sink-inputs short
+
+Confirm that "pipewire-pulse" and the audio session manager are running.
+
+OLED Not Updating
+
+- Confirm that the controller is connected.
+- Check the selected OLED page.
+- Verify the I²C connections.
+- Confirm that the firmware supports the selected display.
+- Make sure another application is not using the serial port.
+
+Project Status
+
+Voltra is under active development.
+
+The Windows version is the primary implementation.
+
+The Linux version is available as an experimental port, with continuing work focused on interface consistency, OLED rendering parity, desktop integration, and hardware testing.
+
+macOS support may be considered in the future but is not currently available.
+
+License
+
+Voltra is licensed under the PolyForm Noncommercial License 1.0.0.
+
+You may use, study, modify, and redistribute the project subject to the license terms.
+
+Commercial use is not permitted without separate authorization.
+
+See the "LICENSE" (LICENSE) file for the complete terms.
+
+This project is source-available and is not licensed under an OSI-approved open-source license.
+
+Repository
+
+GitHub: "zixxi/release-voltra" (https://github.com/zixxi/release-voltra)
+
+Releases: "Download Voltra" (https://github.com/zixxi/release-voltra/releases)
+
+Issues: "Report a bug or suggest a feature" (https://github.com/zixxi/release-voltra/issues)
+
+---
+
+Copyright © 2026 importsys.
+
+Voltra is an independent project.
