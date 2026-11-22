@@ -160,7 +160,7 @@ internal sealed partial class MixerForm : Form
     {
         var body = Grid(1, 2);
         body.Dock = DockStyle.None;
-        body.Height = target switch { 0 => 634, 2 => 1300, _ => 600 };
+        body.Height = target == 0 ? 634 : 600;
         body.RowStyles.Add(new(SizeType.Absolute, 60));
         body.RowStyles.Add(new(SizeType.Percent, 100));
         var title = Caption(new[] { "Dashboard", "OLED", "Settings" }[target], UiMetrics.Page, bold: true);
@@ -168,10 +168,27 @@ internal sealed partial class MixerForm : Form
         buildingSettings = target == 2;
         try
         {
-            body.Controls.Add(target switch { 0 => Dashboard(), 1 => OledSettings(), _ => AppSettings() }, 0, 1);
+            var content = target switch { 0 => Dashboard(), 1 => OledSettings(), _ => AppSettings() };
+            body.Controls.Add(content, 0, 1);
+            if (buildingSettings)
+                FitSettingsToContent(body, content);
         }
         finally { buildingSettings = false; }
         return body;
+    }
+
+    internal static void FitSettingsToContent(TableLayoutPanel body, Control content)
+    {
+        // PageScroller uses the body's height as its scroll extent. Include the
+        // scaled title row and every visible settings row, including nested sections.
+        void Fit()
+        {
+            int rows = content.GetPreferredSize(new Size(Math.Max(1, content.ClientSize.Width), 0)).Height;
+            int height = (int)Math.Ceiling(body.RowStyles[0].Height) + rows + content.Margin.Vertical;
+            if (body.Height != height) body.Height = height;
+        }
+        content.Layout += (_, _) => Fit();
+        Fit();
     }
 
     private Control BuildSidebar()

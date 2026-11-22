@@ -13,6 +13,7 @@ internal static class Program
         using var icon = new Icon(typeof(KnobReadout), "Brand.ico");
         using var window = new Form { ClientSize = new(420, 300), Icon = icon };
         window.Show();
+        VerifySettingsScroll(window);
         foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light, AppTheme.System })
         {
             var palette = ThemePalette.From(new MixerSettings { Theme = theme });
@@ -36,5 +37,38 @@ internal static class Program
             window.Controls.Remove(gauge);
         }
         Console.WriteLine($"PASS WinForms gauge stress at {window.DeviceDpi} DPI.");
+    }
+
+    private static void VerifySettingsScroll(Form window)
+    {
+        using var viewport = new PageScroller(ThemePalette.From(new MixerSettings()))
+            { Dock = DockStyle.Fill, Padding = new(32, 18, 32, 22) };
+        window.Controls.Add(viewport);
+        var body = new TableLayoutPanel { RowCount = 2, ColumnCount = 1 };
+        body.RowStyles.Add(new(SizeType.Absolute, 60));
+        body.RowStyles.Add(new(SizeType.Percent, 100));
+        var rows = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false,
+            FlowDirection = FlowDirection.TopDown, Margin = Padding.Empty };
+        body.Controls.Add(rows, 0, 1);
+        var options = new Panel { Height = 1310, Margin = Padding.Empty };
+        var firmware = new Button { Text = "Update firmware", Height = 36 };
+        rows.Controls.AddRange([options, firmware]);
+        MixerForm.FitSettingsToContent(body, rows);
+        viewport.SetPage(body);
+        foreach (var size in new[] { new Size(940, 650), new Size(1280, 900), new Size(1000, 700) })
+        {
+            window.Size = size;
+            foreach (var height in new[] { 1310, 1480, 1170 })
+            {
+                options.Height = height;
+                Application.DoEvents();
+                viewport.ScrollTo(int.MaxValue);
+                var bounds = viewport.RectangleToClient(firmware.RectangleToScreen(firmware.ClientRectangle));
+                if (!viewport.ClientRectangle.Contains(bounds) || viewport.Offset <= 0 ||
+                    Math.Abs(viewport.ClientSize.Height - viewport.Padding.Bottom - bounds.Bottom) > 12)
+                    throw new InvalidOperationException($"Firmware action clipped or excess scroll at {size}, {height}: {bounds}");
+            }
+        }
+        Console.WriteLine("PASS Settings content extent and last action after resizing");
     }
 }
