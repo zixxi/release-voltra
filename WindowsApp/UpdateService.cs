@@ -49,8 +49,9 @@ internal sealed partial class UpdateService : IDisposable
     }
 
     internal Uri? RepositoryUrl => repository is null ? null : new($"https://github.com/{repository}");
-    internal bool CanDownload(UpdateRelease release) => repository is not null && !string.IsNullOrWhiteSpace(publicKey) &&
-        release.Version > BuildInfo.Version && InstallerAssetName(release.Version) is { } name &&
+    internal bool CanDownload(UpdateRelease release) => CanDownload(release, InstallerAssetName(release.Version));
+    private bool CanDownload(UpdateRelease release, string? name) => repository is not null && !string.IsNullOrWhiteSpace(publicKey) &&
+        release.Version > BuildInfo.Version && name != null &&
         release.Package?.Name == name && release.Manifest?.Name == name + ".json" &&
         release.Signature?.Name == name + ".json.sig";
 
@@ -66,7 +67,14 @@ internal sealed partial class UpdateService : IDisposable
         return architecture is null ? null : $"Voltra-{version}-win-{architecture}.exe";
     }
 
-    internal async Task<UpdateRelease?> CheckAsync(CancellationToken cancellationToken)
+    internal Task<UpdateRelease?> CheckAsync(CancellationToken token) => CheckAsync(InstallerAssetName, token);
+
+    internal static string? LinuxAssetName(Version version) => RuntimeInformation.ProcessArchitecture == Architecture.X64
+        ? $"Voltra-linux-x64-{version}.tar.gz" : null;
+
+    internal Task<UpdateRelease?> CheckLinuxAsync(CancellationToken token) => CheckAsync(LinuxAssetName, token);
+
+    private async Task<UpdateRelease?> CheckAsync(Func<Version, string?> packageName, CancellationToken cancellationToken)
     {
         if (repository is null) throw new InvalidOperationException("Update repository is not configured.");
         if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() < Volatile.Read(ref retryAfterUnixSeconds))
@@ -78,9 +86,11 @@ internal sealed partial class UpdateService : IDisposable
         byte[] json = await ReadSmallAsync(response, MetadataLimit, timeout.Token).ConfigureAwait(false);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        if (root.GetProperty("tag_name").GetString() == FirmwareReleaseTag)
+        string? latestTag = root.GetProperty("tag_name").GetString();
+        if (latestTag == FirmwareReleaseTag || latestTag?.StartsWith("linux-v", StringComparison.Ordinal) == true ||
+            latestTag?.StartsWith("Linux-", StringComparison.OrdinalIgnoreCase) == true)
         {
-            // Recover when the dedicated firmware release was accidentally marked as latest.
+            // Recover when a Linux or firmware release was accidentally marked as latest.
             using var recent = await GetAsync(new Uri($"https://api.github.com/repos/{repository}/releases?per_page=30"),
                 binary: false, timeout.Token).ConfigureAwait(false);
             using var listing = JsonDocument.Parse(await ReadSmallAsync(recent, MetadataLimit, timeout.Token).ConfigureAwait(false));
@@ -98,17 +108,28 @@ internal sealed partial class UpdateService : IDisposable
             throw new InvalidDataException("GitHub returned a release with an invalid version tag.");
         if (version <= BuildInfo.Version) return null;
 
-        string? name = InstallerAssetName(version);
+        string? name = packageName(version);
         var assets = ReadUploadedAssets(root);
-        UpdateAsset? Find(string? assetName) => assets.SingleOrDefault(asset => asset.Name == assetName);
+        UpdateAsset? Find(string? assetName)
+        {
+            var matches = assets.Where(a => a.Name == assetName).Take(2).ToArray();
+            if (matches.Length > 1) throw new InvalidDataException($"Duplicate release asset: {assetName}");
+            return matches.FirstOrDefault();
+        }
         return new(version, root.GetProperty("body").GetString() ?? "",
             Find(name), Find(name + ".json"), Find(name + ".json.sig"));
     }
 
-    internal async Task<VerifiedUpdate> DownloadAsync(UpdateRelease release, string destination, IProgress<int> progress,
-        CancellationToken cancellationToken)
+    internal Task<VerifiedUpdate> DownloadAsync(UpdateRelease release, string destination, IProgress<int> progress,
+        CancellationToken token) => DownloadAsync(release, InstallerAssetName(release.Version), destination, progress, token);
+
+    internal Task<VerifiedUpdate> DownloadLinuxAsync(UpdateRelease release, string destination, IProgress<int> progress,
+        CancellationToken token) => DownloadAsync(release, LinuxAssetName(release.Version), destination, progress, token);
+
+    private async Task<VerifiedUpdate> DownloadAsync(UpdateRelease release, string? name, string destination,
+        IProgress<int> progress, CancellationToken cancellationToken)
     {
-        if (release.Version <= BuildInfo.Version || !CanDownload(release))
+        if (release.Version <= BuildInfo.Version || !CanDownload(release, name))
             throw new InvalidOperationException("A verified update package is unavailable.");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

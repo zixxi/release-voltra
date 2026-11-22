@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using Voltra;
 using Voltra.Linux;
 
+await DesktopReleaseTests.RunAsync();
+
 using var fixture = Assembly.GetExecutingAssembly().GetManifestResourceStream("Voltra.Linux.FirmwareTests.signed-release.json")!;
 using var signed = JsonDocument.Parse(fixture);
 var manifest = signed.RootElement.GetProperty("manifest").GetBytesFromBase64();
@@ -21,6 +23,11 @@ byte[] Metadata(IEnumerable<UpdateAsset> items) => JsonSerializer.SerializeToUtf
 });
 var replies = new Dictionary<string, byte[]> { ["firmware-s3-zero"] = Metadata(assets), ["1"] = manifest, ["2"] = signature, ["3"] = image };
 using var service = new UpdateService(BuildInfo.Get("UpdateRepository"), BuildInfo.Get("UpdatePublicKey"), new FixtureHandler(replies));
+var linuxTag = new { tag_name = "linux-v8.0.0", draft = false, prerelease = false, body = "", assets = Array.Empty<object>() };
+replies["latest"] = JsonSerializer.SerializeToUtf8Bytes(linuxTag);
+replies["releases"] = JsonSerializer.SerializeToUtf8Bytes(new[] { linuxTag, linuxTag with { tag_name = "v7.0.0" } });
+if ((await service.CheckAsync(default))?.Version != new Version(7,0,0)) throw new Exception("Windows channel selected the wrong release.");
+Console.WriteLine("PASS Windows discovery skips Linux Latest");
 var release = await service.CheckFirmwareAsync(true, default);
 var device = new DeviceFirmware("VOLTRA-S3-ZERO", new(0,1,0), 1, "001122334455", 4194304, 65536, 65536);
 void Check(bool ok, string label) { if (!ok) throw new Exception(label); Console.WriteLine($"PASS {label}"); }

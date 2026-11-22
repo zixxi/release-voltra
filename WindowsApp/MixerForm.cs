@@ -498,6 +498,11 @@ internal sealed partial class MixerForm : Form
             Caption("Example: spotify.exe → Spotify", 9, muted: true),
             sync, Caption("Preserve Windows volume changes until the physical knob takes control again.", 9, muted: true),
             Row("Knob takeover mode", takeover), Row("Knob movement threshold", threshold),
+            Divider(), Caption("Dynamic audio mappings", UiMetrics.Section, bold: true, height: 37),
+            MappingRuleRow("Game whitelist", "These executables are recognized alongside automatically detected games.", () => config.RegisteredGames, paths => Persist(config with { RegisteredGames = paths })),
+            MappingRuleRow("Game blacklist", "Exclude these applications even when automatically recognized as games.", () => config.ExcludedGames, paths => Persist(config with { ExcludedGames = paths })),
+            MappingRuleRow("Focused app whitelist", "Leave empty to allow every identifiable focused application with audio.", () => config.FocusedAllow, paths => Persist(config with { FocusedAllow = paths })),
+            MappingRuleRow("Focused app blacklist", "Exclude these applications even when their executable is on the whitelist.", () => config.FocusedDeny, paths => Persist(config with { FocusedDeny = paths })),
             Divider(), Caption("Device connection", UiMetrics.Section, bold: true, height: 37), detect,
             Row("Preferred port", Inline(preferred, rescan)),
             Caption("A specific port overrides automatic detection.", 9, muted: true), BuildAbout(), BuildFirmwareSection());
@@ -615,7 +620,6 @@ internal sealed partial class MixerForm : Form
             .Concat(config.Channels.Select(channel => channel.Processes))
             .Where(name => name.Length > 0 && !name.StartsWith('@'))
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
-        var games = new SortedSet<string>(config.RegisteredGames, StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < names.Length; i++)
         {
             int index = i;
@@ -650,9 +654,6 @@ internal sealed partial class MixerForm : Form
         footer.ColumnStyles.Add(new(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new(SizeType.Absolute, 84));
         footer.ColumnStyles.Add(new(SizeType.Absolute, 122));
-        var manage = ActionButton("Manage game recognition…", () => EditRecognizedGames(dialog, games), 204);
-        manage.Anchor = AnchorStyles.Left;
-        manage.Margin = Padding.Empty;
         var cancel = ActionButton("Cancel", () => { }, 76);
         cancel.Anchor = AnchorStyles.Right;
         cancel.Margin = new(0, 0, 8, 0);
@@ -662,7 +663,6 @@ internal sealed partial class MixerForm : Form
         save.Margin = Padding.Empty;
         save.Primary = true;
         save.DialogResult = DialogResult.OK;
-        footer.Controls.Add(manage, 0, 0);
         footer.Controls.Add(cancel, 1, 0);
         footer.Controls.Add(save, 2, 0);
         grid.Controls.Add(footer, 0, 9);
@@ -674,7 +674,6 @@ internal sealed partial class MixerForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         Persist(config with
         {
-            RegisteredGames = [.. games],
             Channels = targets.Select((target, index) =>
             {
                 string app = target.Value.Trim();
@@ -687,12 +686,16 @@ internal sealed partial class MixerForm : Form
         UpdateView();
     }
 
-    private void EditRecognizedGames(Form owner, SortedSet<string> games)
+    private Control MappingRuleRow(string title, string hint, Func<string[]> read, Action<string[]> save) =>
+        Row(title, ActionButton("Manage…", () => EditMappingRules(title, hint, read(), save), 96));
+
+    private void EditMappingRules(string title, string hint, string[] saved, Action<string[]> save)
     {
+        var games = new SortedSet<string>(saved, StringComparer.OrdinalIgnoreCase);
         using var dialog = new Form
         {
-            Text = "Recognized games", StartPosition = FormStartPosition.CenterParent,
-            ClientSize = new(510, 275), MinimumSize = new(420, 245), ShowInTaskbar = false,
+            Text = title, StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new(550, 275), MinimumSize = new(500, 245), ShowInTaskbar = false,
             BackColor = palette.Background, ForeColor = palette.Text, Font = Font, AutoScaleMode = AutoScaleMode.Dpi
         };
         dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, palette.Dark);
@@ -701,36 +704,51 @@ internal sealed partial class MixerForm : Form
         layout.RowStyles.Add(new(SizeType.Absolute, 42));
         layout.RowStyles.Add(new(SizeType.Percent, 100));
         layout.RowStyles.Add(new(SizeType.Absolute, 48));
-        layout.Controls.Add(Caption("Add the game executable that owns its audio session.", 10), 0, 0);
+        layout.Controls.Add(Caption(hint, 10), 0, 0);
         var list = new ListBox { Dock = DockStyle.Fill, BackColor = palette.Field, ForeColor = palette.Text,
             BorderStyle = BorderStyle.FixedSingle, HorizontalScrollbar = true, IntegralHeight = false,
-            AccessibleName = "Registered game executable paths" };
+            AccessibleName = title + " executable paths" };
         list.Items.AddRange(games.Cast<object>().ToArray());
         layout.Controls.Add(list, 0, 1);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new(0, 6, 0, 0) };
-        actions.Controls.Add(ActionButton("Add game…", () =>
+        void Choose(bool replace)
         {
-            using var file = new OpenFileDialog { Filter = "Game executable (*.exe)|*.exe", CheckFileExists = true };
+            string? previous = replace ? list.SelectedItem as string : null;
+            if (replace && previous == null) return;
+            using var file = new OpenFileDialog { Filter = "Application (*.exe)|*.exe", CheckFileExists = true };
             if (file.ShowDialog(dialog) != DialogResult.OK) return;
-            if (AudioApplication.SharedHost(file.FileName))
+            string path = Path.GetFullPath(file.FileName);
+            if (AudioApplication.SharedHost(path))
             {
-                MessageBox.Show(dialog, "This runtime can host several applications. Choose a game-specific executable. " +
-                    "Voltra recognizes Minecraft Java when its game window is focused.", "Recognized games");
+                MessageBox.Show(dialog, "This executable hosts multiple applications. Choose an application-specific executable.", title);
                 return;
             }
-            if (games.Add(file.FileName)) list.Items.Add(file.FileName);
-        }, 112));
+            if (games.Contains(path) && !StringComparer.OrdinalIgnoreCase.Equals(path, previous))
+            {
+                MessageBox.Show(dialog, "This executable is already listed.", title);
+                return;
+            }
+            if (previous != null) { games.Remove(previous); list.Items.Remove(previous); }
+            games.Add(path);
+            list.SelectedIndex = list.Items.Add(path);
+        }
+        actions.Controls.Add(ActionButton("Add…", () => Choose(false), 72));
+        actions.Controls.Add(ActionButton("Edit…", () => Choose(true), 72));
         actions.Controls.Add(ActionButton("Remove", () =>
         {
             if (list.SelectedItem is string path) { games.Remove(path); list.Items.Remove(path); }
-        }, 88));
-        var done = ActionButton("Done", () => dialog.Close(), 80);
+        }, 82));
+        var cancel = ActionButton("Cancel", () => { }, 76);
+        cancel.DialogResult = DialogResult.Cancel;
+        var done = ActionButton("Save", () => { }, 76, true);
+        done.DialogResult = DialogResult.OK;
+        actions.Controls.Add(cancel);
         actions.Controls.Add(done);
         layout.Controls.Add(actions, 0, 2);
         dialog.Controls.Add(layout);
         dialog.AcceptButton = done;
-        dialog.CancelButton = done;
-        dialog.ShowDialog(owner);
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog(this) == DialogResult.OK) save([.. games]);
     }
 
     private string SuggestedName(string app, string master)

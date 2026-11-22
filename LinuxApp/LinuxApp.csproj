@@ -20,7 +20,10 @@
     <AvaloniaResource Include="Assets/Fonts/*.ttf" />
     <EmbeddedResource Include="Assets/Fonts/selawkb.ttf" LogicalName="Voltra.SelawikBold.ttf" />
     <None Update="Assets/Fonts/Selawik-OFL.txt" TargetPath="Selawik-OFL.txt" CopyToPublishDirectory="PreserveNewest" />
-    <AvaloniaResource Include="../WindowsApp/Voltra.ico" Link="Assets/Voltra.ico" />
+    <AvaloniaResource Include="Assets/Icons/voltra-32.png;Assets/Icons/voltra-256.png" />
+    <InternalsVisibleTo Include="Voltra.Linux.MappingTests" />
+    <None Update="Assets/Icons/*.png" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Packaging/*" TargetPath="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>

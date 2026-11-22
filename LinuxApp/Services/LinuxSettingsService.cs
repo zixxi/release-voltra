@@ -12,9 +12,10 @@ internal sealed record Settings
 {
     internal const string Master = "@master";
     internal const string DefaultAccent = "#B78BFA";
+    public MappingRules Rules { get; init; } = new();
     public Channel[] Channels { get; init; } =
         [new("Spotify", "spotify"), new("Discord", "discord"), new("Firefox", "firefox"),
-         new("Game", ""), new("Master", Master)];
+         new("Game", DynamicAudio.Game), new("Master", Master)];
     public string Theme { get; init; } = "Dark";
     public string Accent { get; init; } = DefaultAccent;
     public string Port { get; init; } = "";
@@ -58,6 +59,7 @@ internal static class LinuxSettingsService
             var defaults = new Settings();
             return value with
             {
+                Rules = (value.Rules ?? new()).Normalize(),
                 Channels = Enumerable.Range(0, 5).Select(i =>
                 {
                     var channel = value.Channels?.ElementAtOrDefault(i) ?? defaults.Channels[i];

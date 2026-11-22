@@ -43,6 +43,7 @@ public sealed partial class App : Application
             e.Cancel = true;
             _ = ExitAsync();
         };
+        model.RestartForUpdate = () => _ = ExitAsync(true);
         var startup = model.RestoreStartupAsync();
         window.Closing += (_, e) =>
         {
@@ -63,7 +64,7 @@ public sealed partial class App : Application
         {
             try
             {
-                using var icon = AssetLoader.Open(new Uri("avares://LinuxApp/Assets/Voltra.ico"));
+                using var icon = AssetLoader.Open(new Uri("avares://LinuxApp/Assets/Icons/voltra-32.png"));
                 var menu = new NativeMenu();
                 var open = new NativeMenuItem("Open Voltra");
                 var exit = new NativeMenuItem("Exit");
@@ -89,6 +90,15 @@ public sealed partial class App : Application
             if (minimized) model.Report("System tray unavailable. Voltra opened normally.");
         }
         await startup;
+        try
+        {
+            if (LinuxUpdateService.StartupResult() is { } result) model.Report(result);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            model.Report($"Could not confirm the update: {ex.Message}");
+            await ExitAsync();
+        }
 
         void OpenWindow()
         {
@@ -97,9 +107,9 @@ public sealed partial class App : Application
             window.Activate();
         }
 
-        async Task ExitAsync()
+        async Task ExitAsync(bool update = false)
         {
-            if (exiting || model.FirmwareDialogOpen || model.Firmware.Installing) return;
+            if (exiting || (model.DesktopUpdating && !update) || model.FirmwareDialogOpen || model.Firmware.Installing) return;
             exiting = true;
             window.StopRefresh();
             try { await model.DisposeAsync(); }

@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Deterministic audio server for the integration test, scoped to its temp directory."""
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+root = Path(os.environ["VOLTRA_TEST_AUDIO"])
+args = sys.argv[1:]
+if args == ["info"]:
+    print("Server Name: PulseAudio (on PipeWire fixture)")
+elif args == ["subscribe"]:
+    with (root / "events").open() as events:
+        events.seek(0, 2)
+        while True:
+            line = events.readline()
+            if line:
+                print(line.rstrip(), flush=True)
+            else:
+                time.sleep(.025)
+elif args == ["get-default-sink"]:
+    print("main")
+elif args == ["--format=json", "list", "sinks"]:
+    print('[{"name":"main","volume":{"mono":{"value_percent":"50%"}}}]')
+elif args == ["--format=json", "list", "sink-inputs"]:
+    streams = []
+    for row in json.loads((root / "streams").read_text()):
+        index, app_id, serial, role = row
+        streams.append(dict(index=index, properties={"application.id": app_id, "application.name": app_id,
+            "object.serial": str(serial), "media.role": role}, volume={"mono":{"value_percent":(root/str(index)).read_text()+"%"}}))
+    print(json.dumps(streams))
+elif len(args) == 3 and args[0].startswith("set-"):
+    with (root / "writes").open("a") as log:
+        print(*args, file=log)
+    path = root / args[1]
+    pending = path.with_suffix(".pending")
+    pending.write_text(args[2].rstrip("%"))
+    pending.replace(path)
+else:
+    sys.exit(2)

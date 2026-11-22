@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+LinuxApp/Packaging/*.sh text eol=lf
+LinuxApp/Packaging/*.desktop text eol=lf
+LinuxApp/Tools/*.sh text eol=lf
+tests/linux-mappings/fixtures/* text eol=lf

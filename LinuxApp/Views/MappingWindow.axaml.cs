@@ -29,7 +29,8 @@ public sealed partial class MappingWindow : Window
     {
         this.reducedMotion = reducedMotion;
         var custom = new Choice("Enter application ID…", null);
-        Choice[] apps = [new("System volume", Settings.Master), custom, .. applications
+        Choice[] apps = [new("System volume", Settings.Master), new("Game", DynamicAudio.Game),
+            new("Currently Focused", DynamicAudio.Focused), custom, .. applications
             .Where(item => item.Target != Settings.Master)
             .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .SelectMany(group => group.Select(item => new Choice(group.Count() == 1
@@ -118,7 +119,7 @@ public sealed partial class MappingWindow : Window
                 return;
             }
             target = selected.Target!;
-            string suggestion = target == Settings.Master ? "Master" : formatAppNames ? selected.Name : target;
+            string suggestion = target == Settings.Master ? "Master" : formatAppNames || DynamicAudio.IsDynamic(target) ? selected.Name : target;
             if (formatAppNames && suggestion.Length > 0) suggestion = char.ToUpperInvariant(suggestion[0]) + suggestion[1..];
             name.Text = suggestion[..Math.Min(suggestion.Length, 18)];
         };

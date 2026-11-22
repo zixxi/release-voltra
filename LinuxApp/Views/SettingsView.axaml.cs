@@ -13,7 +13,9 @@ public sealed partial class SettingsView : UserControl
     private string? lastAutoPort, lastManualPort;
     private bool refreshingPorts, writingStartup, gesture;
     private readonly CancellationTokenSource checks = new();
-    private LinuxRelease? available;
+    private UpdateRelease? available;
+    private PreparedUpdate? prepared;
+    private CancellationTokenSource? desktopDownload;
     private FirmwareRelease? firmware;
     private bool firmwareChecking;
     private DateTimeOffset nextFirmwareCheck;
@@ -28,12 +30,27 @@ public sealed partial class SettingsView : UserControl
         FirmwareInstall.Click += async (_, _) =>
         {
             var snapshot = model.Device.Snapshot;
-            if (model.FirmwareDialogOpen || firmware is null || snapshot.Identity is not { } device ||
+            if (model.DesktopUpdating || model.FirmwareDialogOpen || firmware is null || snapshot.Identity is not { } device ||
                 snapshot.UsbSocket is null || !firmware.CanInstall(device) || TopLevel.GetTopLevel(this) is not Window parent) return;
             model.FirmwareDialogOpen = true;
             try { await new FirmwareWindow(model, snapshot, firmware).ShowDialog(parent); }
             finally { model.FirmwareDialogOpen = false; RefreshFirmware(model.Device.Snapshot); }
         };
+        void Rules(Button button, string title, string description, Func<MappingRules, string[]> get,
+            Func<MappingRules, string[], MappingRules> update)
+        {
+            button.Click += async (_, _) =>
+            {
+                if (TopLevel.GetTopLevel(this) is not Window parent) return;
+                var editor = new RuleWindow(title, description, get(model.Settings.Rules), model.Audio.Snapshot.Applications);
+                if (await editor.ShowDialog<string[]?>(parent) is { } entries)
+                    model.Change(model.Settings with { Rules = update(model.Settings.Rules, entries) });
+            };
+        }
+        Rules(GameAllow, "Game whitelist", "Recognize these applications as games alongside automatically detected games.", r => r.GameAllow, (r, values) => r with { GameAllow = values });
+        Rules(GameDeny, "Game blacklist", "Exclude these applications from Game, even if they are on the whitelist.", r => r.GameDeny, (r, values) => r with { GameDeny = values });
+        Rules(FocusAllow, "Focused app whitelist", "An empty whitelist allows every identifiable focused application with audio.", r => r.FocusAllow, (r, values) => r with { FocusAllow = values });
+        Rules(FocusDeny, "Focused app blacklist", "Exclude these applications from Currently Focused, even if they are on the whitelist.", r => r.FocusDeny, (r, values) => r with { FocusDeny = values });
         var config = model.Settings;
         StartupToggle.IsChecked = config.Startup;
         ThemeDark.IsChecked = config.Theme == "Dark";
@@ -49,7 +66,7 @@ public sealed partial class SettingsView : UserControl
         TakeoverModes.IsEnabled = ThresholdMenu.IsEnabled = config.Sync;
         ThresholdMenu.ItemsSource = new[] { "1%", "2%", "3%", "4%", "5%" };
         ThresholdMenu.SelectedIndex = config.NoiseThreshold - 1;
-        VersionLine.Text = $"Desktop Audio Controller  ·  Version {LinuxUpdateService.Version}  ·  Linux x64";
+        VersionLine.Text = $"Desktop Audio Controller  ·  Version {LinuxUpdateService.DisplayVersion}  ·  Linux x64";
         string[] presetColors = [Settings.DefaultAccent, "#6596EF", "#26B6BC", "#64BA6C", "#E5AA51", "#E6809D"];
         string[] presetNames = ["Lilac", "Blue", "Teal", "Green", "Amber", "Rose"];
         var swatches = new Button[presetColors.Length];
@@ -157,17 +174,23 @@ public sealed partial class SettingsView : UserControl
             { model.Report("Could not copy serial diagnostics."); }
         };
         CheckUpdates.Click += async (_, _) => await CheckAsync();
-        OpenRelease.Click += async (_, _) =>
+        OpenRelease.Click += async (_, _) => await UpdateApplicationAsync(model);
+        CancelUpdate.Click += (_, _) =>
         {
-            if (available is null) return;
-            try
+            desktopDownload?.Cancel();
+            if (prepared != null)
             {
-                var launcher = TopLevel.GetTopLevel(this)?.Launcher;
-                if (launcher is null || !await launcher.LaunchUriAsync(available.Package))
-                    UpdateStatus.Text = available.Package.AbsoluteUri;
+                prepared.Dispose();
+                prepared = null;
+                UpdateStatus.Text = "Update canceled.";
+                ResetUpdateControls(model);
             }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException)
-            { UpdateStatus.Text = $"Browser unavailable: {available.Package.AbsoluteUri}"; }
+        };
+        ManualRelease.Click += async (_, _) =>
+        {
+            var uri = new Uri($"https://github.com/{LinuxUpdateService.Repository}/releases");
+            if (TopLevel.GetTopLevel(this)?.Launcher is not { } launcher || !await launcher.LaunchUriAsync(uri))
+                UpdateStatus.Text = uri.AbsoluteUri;
         };
 
         ViewRepository.Click += async (_, _) =>
@@ -283,21 +306,91 @@ public sealed partial class SettingsView : UserControl
         finally { firmwareChecking = false; RefreshFirmware(model.Device.Snapshot); }
     }
 
+    private void ResetUpdateControls(MainViewModel model)
+    {
+        model.DesktopUpdating = false;
+        CancelUpdate.IsVisible = false;
+        CheckUpdates.IsEnabled = OpenRelease.IsEnabled = true;
+        OpenRelease.Content = "Download verified update";
+    }
+
+    private async Task UpdateApplicationAsync(MainViewModel model)
+    {
+        if (available == null || model.FirmwareDialogOpen || model.Firmware.Installing) return;
+        if (prepared != null)
+        {
+            try
+            {
+                prepared.Commit();
+                prepared.Dispose();
+                prepared = null;
+                OpenRelease.IsEnabled = CancelUpdate.IsEnabled = false;
+                UpdateStatus.Text = "Restarting to install the update…";
+                model.RestartForUpdate!();
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                prepared?.Dispose();
+                prepared = null;
+                ResetUpdateControls(model);
+                UpdateStatus.Text = ex.Message;
+            }
+            return;
+        }
+        if (model.DesktopUpdating) return;
+        model.DesktopUpdating = true;
+        desktopDownload = CancellationTokenSource.CreateLinkedTokenSource(checks.Token);
+        CheckUpdates.IsEnabled = OpenRelease.IsEnabled = false;
+        CancelUpdate.IsVisible = true;
+        UpdateStatus.Text = "Verifying the signed release manifest…";
+        try
+        {
+            prepared = await LinuxUpdateService.PrepareAsync(available, new Progress<int>(p =>
+                UpdateStatus.Text = $"Downloading update · {p}%"), () => UpdateStatus.Text = "Verified. Preparing installation…", desktopDownload.Token);
+            UpdateStatus.Text = $"Voltra {available.Version} is ready. Restart to install.";
+            OpenRelease.Content = "Restart and install";
+            OpenRelease.IsEnabled = true;
+        }
+        catch (OperationCanceledException) { UpdateStatus.Text = "Update canceled or timed out."; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or
+            System.Security.Cryptography.CryptographicException or System.ComponentModel.Win32Exception or
+            HttpRequestException or TimeoutException or FormatException or System.Text.Json.JsonException or KeyNotFoundException or InvalidDataException)
+        {
+            UpdateStatus.Text = $"Update failed. {ex.Message} You can extract the official release to a new user-owned directory.";
+            ManualRelease.IsVisible = true;
+        }
+        finally
+        {
+            desktopDownload.Dispose();
+            desktopDownload = null;
+            if (prepared == null) ResetUpdateControls(model);
+        }
+    }
+
     private async Task CheckAsync()
     {
         CheckUpdates.IsEnabled = false;
-        UpdateStatus.Text = "Checking for Linux releases…";
+        available = null;
+        OpenRelease.IsVisible = ManualRelease.IsVisible = NotesViewer.IsVisible = false;
+        UpdateStatus.Text = "Checking for desktop releases…";
         try
         {
             available = await LinuxUpdateService.CheckAsync(checks.Token);
-            UpdateStatus.Text = available is null ? "No newer Linux package found." : $"Voltra {available.Version} is available.";
-            OpenRelease.IsVisible = available is not null;
+            UpdateStatus.Text = available is null ? "No newer Linux package found." : $"Installed {LinuxUpdateService.DisplayVersion} · Available {available.Version}.";
+            if (available != null)
+            {
+                bool complete = available.Package != null && available.Manifest != null && available.Signature != null;
+                OpenRelease.IsVisible = complete && LinuxUpdateService.Portable;
+                ManualRelease.IsVisible = !OpenRelease.IsVisible;
+                if (!complete) UpdateStatus.Text += " This release has no complete signed Linux x64 package.";
+                else if (!LinuxUpdateService.Portable) UpdateStatus.Text += " Extract the release to a dedicated user-owned folder to enable automatic updates.";
+            }
             ReleaseNotes.Text = available?.Notes ?? "";
             NotesViewer.IsVisible = !string.IsNullOrWhiteSpace(available?.Notes);
         }
         catch (OperationCanceledException) when (checks.IsCancellationRequested) { }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or
-            InvalidOperationException or OperationCanceledException or KeyNotFoundException)
+            InvalidOperationException or OperationCanceledException or KeyNotFoundException or InvalidDataException or IOException)
         { UpdateStatus.Text = $"Could not check for updates: {ex.Message}"; }
         finally { CheckUpdates.IsEnabled = true; }
     }

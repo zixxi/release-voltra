@@ -18,7 +18,7 @@ Confirm that `pactl info` reports **PulseAudio (on PipeWire …)**. For minimal 
 3. If the Dashboard reports a permissions problem, close other serial tools and check the port's group with `ls -l /dev/ttyACM0`, substituting your actual device. Add your user to the device's serial group if needed. On Ubuntu and Fedora it is commonly `dialout` (`sudo usermod -aG dialout "$USER"`). Log out and back in after changing membership. Run Voltra as your normal user.
 4. Start playback in the apps you want to control. On **Dashboard → Edit mappings**, select a running application, or choose **Enter application ID…** to type an ID, executable name, or name. **Save mappings** applies all five rows. **Cancel** keeps your previous mappings. **System volume** follows the current default output. Soft takeover waits for the physical knob to reach or cross the current volume. Immediate takeover acts after the movement threshold.
 
-**OLED** supports mixer levels, clock/date, weather, local images and GIFs, and PC uptime. With an OLED connected, the preview shows the latest idle framebuffer acknowledged over serial. Without an OLED, it shows the local framebuffer. The controller briefly overlays knob movement on the physical display. Windows and Linux share the page layout, mixer bitmap font and image dithering. Linux uses Microsoft Selawik 1.01 under the SIL Open Font License for the Segoe UI layout. Standalone behavior after a disconnect depends on the installed firmware, and weather needs network access. Application updates and firmware version detection are available from **Settings**. Application updates link to the Linux package for manual installation. Use **Settings → Device firmware** to check the controller separately.
+**OLED** supports mixer levels, clock/date, weather, local images and GIFs, and PC uptime. With an OLED connected, the preview shows the latest idle framebuffer acknowledged over serial. Without an OLED, it shows the local framebuffer. The controller briefly overlays knob movement on the physical display. Windows and Linux share the page layout, mixer bitmap font and image dithering. Linux uses Microsoft Selawik 1.01 under the SIL Open Font License for the Segoe UI layout. Standalone behavior after a disconnect depends on the installed firmware, and weather needs network access. Application updates and firmware version detection are available from **Settings**. Portable releases support signed application updates and restart from Settings. Use **Settings → Device firmware** to check the controller separately.
 
 **Launch Voltra at system startup** creates an XDG Autostart entry at `$XDG_CONFIG_HOME/autostart/voltra.desktop` (normally `~/.config/autostart/voltra.desktop`). It passes `--minimized` to the same executable. A desktop with an active StatusNotifier host, such as KDE Plasma or GNOME with an AppIndicator extension, can restore Voltra from its tray menu. Other sessions open the main window so its controls are still accessible. Keep the executable at its configured path for startup to find it.
 
@@ -88,3 +88,52 @@ python3 tests/linux-firmware/test_helper.py
 ```
 
 The firmware tests use an existing signed public fixture, mock processes, and simulated serial hardware. They do not write to a physical controller.
+
+## Dynamic audio mappings
+
+Assign **Game** or **Currently Focused** to any knob in **Dashboard → Edit mappings**.
+With an eligible stream, the Dashboard shows its name and volume. Both the mixer framebuffer and the movement overlay use the active label within the existing OLED character limit.
+
+| Session | Currently Focused |
+| --- | --- |
+| X11 with EWMH | Reads the active window, its PID and optional GTK application ID through libxcb. Desktop and dock windows are ignored. |
+| Sway on Wayland | Requires the session's SWAYSOCK and swaymsg. Reads the focused native or XWayland node from the compositor's IPC tree. |
+| GNOME Wayland, Plasma Wayland and other compositors without an implemented provider | Shows “Focus unavailable”. Static mappings and independently identified games remain usable. |
+
+Voltra uses the window's process lifetime, exact application IDs, Flatpak identity or corroborated executable identity to find related playback streams. It leaves an unresolved or ambiguous target inactive. Shared runtimes such as Wine and Java require additional identifying metadata. Sandboxed applications and launchers can hide it. There is no cross-desktop foreground window portal used by Voltra. Consult the [EWMH specification](https://specifications.freedesktop.org/wm/latest-single/) and [Sway IPC reference](https://man.archlinux.org/man/sway-ipc.7.en).
+
+Game recognition uses the stream's game role or a Steam application ID corroborated by the game installation path. Wine/Proton games can also supply a game image path through the Wine command line. Launchers, non-Steam games and restricted processes can need a manual whitelist entry. The focused eligible game wins. Otherwise the last selected eligible game stays active. With multiple candidates and no selection history, move focus to the desired game or restrict the candidates with rules.
+
+**Settings → Dynamic audio mappings** offers four independent lists. Game whitelist entries extend automatic recognition. An empty focused-app whitelist allows all identifiable apps. Each blacklist overrides its matching whitelist. Choose an audio-producing app, an installed desktop application ID, or browse to a native executable. Desktop IDs only match when exported by the application or its sandbox. Executable rules require a process whose executable can be identified. Running entries show the exact identity to use.
+
+Volume is the arithmetic mean of the target's playback streams. A target or stream-membership change rebinds the existing takeover state at the current hardware position. Soft pickup preserves relative stream levels when applying a delta, limited to 0–100%. Immediate takeover writes the requested level to each stream after physical movement. External changes are observed through the existing PipeWire subscription and refresh. Voltra checks group identity and volume again before writing and rechecks focus before individual writes. The separate compositor and Pulse APIs cannot guarantee an atomic system-wide focus-and-volume operation.
+
+## Desktop application updates
+
+**Settings → About → Check for updates** reads the latest stable desktop release
+and shows its notes. Choose **Download verified update**, then **Restart and
+install** once preparation is complete. Voltra verifies the detached RSA-PSS
+signature with the embedded desktop public key, then checks the exact archive
+name, repository, version, byte count and SHA-256 digest. The installer from
+the running application prepares a new directory. It waits for the running
+process to exit, swaps the directories atomically on the same filesystem and
+waits for the new version to confirm startup. A failed startup switches back
+and restarts the previous copy. Settings stay in the normal XDG config folder.
+
+| Installation | Update method |
+| --- | --- |
+| Dedicated, user-owned directory extracted from a signed release starting with 0.9.7 | In-app updates. Requires a writable parent, Python 3.9+ at `/usr/bin/python3`, Linux pidfds and atomic directory exchange on the installation filesystem. |
+| Older archives, development builds, system or read-only directories | Download the verified release manually, extract it to a new directory, close the previous copy and launch the new application. |
+| Directory with extra files or symbolic links | Move personal files outside the installation, or install the release in a fresh directory. |
+
+If preparation fails, the running copy stays in place. If restart fails, check
+the hidden `.<directory>.update-error.log` next to the installation. For recovery
+after an interrupted swap, a retained `.<directory>.update-*/package` can contain
+the previous installation. Close Voltra before moving an intact tree back into
+place, or extract an official release into a new directory. Rerun
+`./install-desktop.sh` if the installation path changes.
+
+See [Unified desktop releases](../release-tools/README.md) to build, sign and
+publish both packages in one release. Run the mapping tests with
+`dotnet run --project tests/linux-mappings/Voltra.Linux.MappingTests.csproj -c Release`
+and the portable transaction tests with `python3 tests/linux-update/test_install.py`.

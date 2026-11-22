@@ -158,18 +158,18 @@ Extract the archive:
 
 ```bash
 mkdir -p ~/Applications/Voltra
-tar -xzf Voltra-VERSION-linux-x64.tar.gz -C ~/Applications/Voltra
+tar -xzf Voltra-linux-x64-VERSION.tar.gz -C ~/Applications/Voltra
 ```
 
 Then run:
 
 ```bash
-cd ~/Applications/Voltra
-chmod +x ./LinuxApp
+cd ~/Applications/Voltra/Voltra-linux-x64
+./install-desktop.sh   # optional application-menu entry
 ./LinuxApp
 ```
 
-The commands assume the executable is directly inside the extracted directory.
+Keep the extracted directory in place after installing its launcher.
 
 The self-contained Linux distribution includes the required .NET runtime.
 
@@ -281,7 +281,7 @@ Firmware releases use the dedicated GitHub release tag:
 
 Firmware updates are separate from desktop application updates.
 
-**Linux firmware flashing is not currently supported through the desktop application.** Use the existing manual firmware workflow when necessary.
+Linux users can check and install signed controller firmware under **Settings → Device firmware**. See [Linux firmware instructions](LinuxApp/README.md#update-controller-firmware).
 
 ## Application Updates
 
@@ -291,25 +291,14 @@ Voltra can check GitHub for new stable releases.
 
 The Windows update mechanism verifies signed release metadata and installer integrity before proceeding.
 
-A typical Windows release contains:
+A unified stable release uses a single `vVERSION` tag and contains the Inno Setup
+installer and the Linux self-contained archive. Each platform selects its exact
+asset name and verifies the associated signed SHA-256 manifest. The firmware
+updater uses the separate `firmware-s3-zero` release.
 
-```text
-Voltra-VERSION-win-x64.exe
-Voltra-VERSION-win-x64.exe.json
-Voltra-VERSION-win-x64.exe.json.sig
-```
-
-The manifest uses SHA-256 checksums and an RSA-PSS signature.
-
-The private signing key is not included in the application or repository.
-
-### Linux
-
-The Linux version supports checking for compatible application releases.
-
-Available updates can be downloaded and installed manually.
-
-Automatic Linux package installation is not currently implemented.
+Linux settings expose download and restart for supported portable installations.
+See the [Linux installation and recovery instructions](LinuxApp/README.md#desktop-application-updates)
+and the [unified release procedure](release-tools/README.md).
 
 ## Building from Source
 

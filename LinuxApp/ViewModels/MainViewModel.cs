@@ -10,6 +10,8 @@ internal sealed class MainViewModel : IAsyncDisposable
     internal Settings Settings => Volatile.Read(ref settings);
     internal string? Message => Volatile.Read(ref message);
     internal LinuxFirmwareUpdater Firmware { get; } = new();
+    internal bool DesktopUpdating { get; set; }
+    internal Action? RestartForUpdate { get; set; }
     internal bool FirmwareDialogOpen { get; set; }
     internal LinuxDeviceService Device { get; }
     internal PipeWireAudioService Audio { get; }

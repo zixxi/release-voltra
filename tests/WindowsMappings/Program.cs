@@ -89,6 +89,18 @@ Check("Restart and session membership changes reset the source identity", () =>
     Expect(!ReferenceEquals(first, binding.Current(0).Source) && Read(0) == 19);
     sessions.Remove(restarted);
 });
+Check("Independent exact-path rules and blacklist precedence", () =>
+{
+    var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { game.Target.App!.Path };
+    var others = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { discord.Target.App!.Path };
+    var targets = new[] { game.Target, spotify.Target, discord.Target, master.Target };
+    binding.Resolve(mappings, true, targets, game.Target.App, paths, paths, paths, paths);
+    Expect(Read(0) == null && Read(1) == null && Read(2) == spotify.Live && Read(3) == master.Live);
+    binding.Resolve(mappings, true, targets, discord.Target.App, registered, null, paths, null);
+    Expect(Read(0) == game.Live && Read(1) == null);
+    binding.Resolve(mappings, true, targets, discord.Target.App, registered, null, others, null);
+    Expect(Read(1) == discord.Live);
+});
 Check("Manual game registration uses the executable path", () =>
 {
     var manual = new Session("Pocket", 45);

@@ -99,6 +99,13 @@ internal sealed record MixerSettings
     public string City { get; init; } = "";
     public string MediaPath { get; init; } = "";
     public string[] RegisteredGames { get; init; } = [];
+    public string[] ExcludedGames { get; init; } = [];
+    public string[] FocusedAllow { get; init; } = [];
+    public string[] FocusedDeny { get; init; } = [];
+    internal static string[] NormalizePaths(string[]? entries) => (entries ?? [])
+        .Where(path => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
     public Channel[] Channels { get; init; } =
     [
         new("Spotify", "Spotify.exe"), new("Discord", "Discord.exe"),
@@ -117,8 +124,10 @@ internal sealed record MixerSettings
             {
                 var normalized = settings with
                 {
-                    RegisteredGames = (settings.RegisteredGames ?? []).Where(path => !string.IsNullOrEmpty(path) &&
-                        Path.IsPathFullyQualified(path)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    RegisteredGames = NormalizePaths(settings.RegisteredGames),
+                    ExcludedGames = NormalizePaths(settings.ExcludedGames),
+                    FocusedAllow = NormalizePaths(settings.FocusedAllow),
+                    FocusedDeny = NormalizePaths(settings.FocusedDeny),
                     Channels = settings.Channels.Select(channel => new Channel(channel.Label ?? "", channel.Processes ?? "")).ToArray(),
                     PreferredPort = settings.PreferredPort ?? "",
                     TakeoverMode = Enum.IsDefined(settings.TakeoverMode) ? settings.TakeoverMode : KnobTakeover.Soft,

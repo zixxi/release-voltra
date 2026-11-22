@@ -514,3 +514,7 @@ FodyWeavers.xsd
 /Release-Voltra.bat
 Voltra-linux-x64.zip
 *.patch
+
+# Local Linux release packages
+/artifacts/
+release-win.bat

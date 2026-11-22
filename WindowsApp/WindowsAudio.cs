@@ -21,7 +21,8 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
     internal SessionBindings Bindings { get; } = new();
     private readonly Dictionary<uint, AudioApplication?> owners = [];
     private HashSet<string> registered = new(StringComparer.OrdinalIgnoreCase);
-    private string[]? registeredPaths;
+    private HashSet<string> gameDeny = [], focusAllow = [], focusDeny = [];
+    private MixerSettings? rulesConfig;
     private uint foregroundPid;
     private nint foregroundWindow;
     private bool hasDynamicMappings;
@@ -30,10 +31,13 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
     {
         var channels = settings.Channels;
         hasDynamicMappings = channels.Any(channel => channel.Dynamic);
-        if (!ReferenceEquals(registeredPaths, settings.RegisteredGames))
+        if (!ReferenceEquals(rulesConfig, settings))
         {
-            registeredPaths = settings.RegisteredGames;
-            registered = new(registeredPaths, StringComparer.OrdinalIgnoreCase);
+            rulesConfig = settings;
+            registered = new(settings.RegisteredGames, StringComparer.OrdinalIgnoreCase);
+            gameDeny = new(settings.ExcludedGames, StringComparer.OrdinalIgnoreCase);
+            focusAllow = new(settings.FocusedAllow, StringComparer.OrdinalIgnoreCase);
+            focusDeny = new(settings.FocusedDeny, StringComparer.OrdinalIgnoreCase);
         }
         owners.Clear();
         var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -170,7 +174,7 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
             foreach (var target in targets.Values)
                 if (target.App?.Key == focus.Key) target.App = focus;
         }
-        Bindings.Resolve(settings.Channels, settings.FormatAppNames, targets.Values, focus, registered);
+        Bindings.Resolve(settings.Channels, settings.FormatAppNames, targets.Values, focus, registered, gameDeny, focusAllow, focusDeny);
     }
 
     internal bool ForegroundUnchanged() =>

@@ -10,7 +10,7 @@ internal enum ControllerConnection { Disconnected, Connecting, Connected, Error 
 internal sealed record DeviceSnapshot(string Status, string Display, string[] Ports, int[]? Levels = null,
     string? Port = null, string? Firmware = null, ControllerConnection Connection = ControllerConnection.Disconnected,
     byte[]? Displayed = null, DeviceFirmware? Identity = null, string? UsbSocket = null);
-internal sealed record DisplayFrame(byte[] Pixels, DisplayPage Page, int Flags, uint Media);
+internal sealed record DisplayFrame(byte[] Pixels, DisplayPage Page, int Flags, uint Media, string[]? Labels = null);
 
 internal sealed class LinuxDeviceService : IAsyncDisposable
 {
@@ -229,7 +229,7 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
             var parsed = new int[5];
             DisplayFrame? sending = null, sent = null;
             byte[]? displayed = null;
-            Channel[]? configuredChannels = null;
+            string[]? configuredNames = null;
             string[]? labels = null;
             string[] currentLabels = [];
             (DisplayPage Page, int Flags, uint Media)? pageState = null;
@@ -335,11 +335,11 @@ internal sealed class LinuxDeviceService : IAsyncDisposable
                 var frame = Volatile.Read(ref display);
                 if (ready && levels is not null && frame is not null)
                 {
-                    var channels = settings().Channels;
-                    if (configuredChannels != channels)
+                    var names = frame.Labels ?? settings().Channels.Select(c => c.Label).ToArray();
+                    if (configuredNames == null || !configuredNames.AsSpan().SequenceEqual(names))
                     {
-                        configuredChannels = channels;
-                        currentLabels = channels.Select(c => SerialProtocol.Ascii(c.Label, 18)).ToArray();
+                        configuredNames = names;
+                        currentLabels = names.Select(name => SerialProtocol.Ascii(name, 18)).ToArray();
                     }
                     if (labels is null || !labels.AsSpan().SequenceEqual(currentLabels))
                     {

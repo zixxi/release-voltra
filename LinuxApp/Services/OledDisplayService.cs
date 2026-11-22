@@ -104,9 +104,11 @@ internal sealed class OledDisplayService : IAsyncDisposable
                 }
 
                 DateTime local = DateTime.Now;
+                var sound = audio.Snapshot;
+                var labels = config.Channels.Select(sound.Label).ToArray();
                 byte[] pixels = config.Page switch
                 {
-                    DisplayPage.Mixer => Mixer(config, audio.Snapshot.Volumes),
+                    DisplayPage.Mixer => Mixer(config, sound.Volumes, labels),
                     DisplayPage.Clock => textRenderer.Render(OledFrame.Clock(local, config.TwelveHour)),
                     DisplayPage.Weather => textRenderer.Render(OledFrame.Weather(city, weather)),
                     DisplayPage.Image => media is null ? textRenderer.Render(OledFrame.NoMedia())
@@ -123,7 +125,7 @@ internal sealed class OledDisplayService : IAsyncDisposable
                 else Volatile.Write(ref snapshot, new(message, pixels));
                 if (Snapshot.Message != message) Volatile.Write(ref snapshot, new(message, pixels));
                 device.SetFrame(new(pixels, config.Page, config.TwelveHour ? 1 : 0,
-                    config.Page == DisplayPage.Image ? media?.Id ?? 0 : 0));
+                    config.Page == DisplayPage.Image ? media?.Id ?? 0 : 0, labels));
                 await Task.Delay(config.Page == DisplayPage.Image ? 75 : 125, token);
             }
         }
@@ -140,7 +142,7 @@ internal sealed class OledDisplayService : IAsyncDisposable
         }
     }
 
-    internal static byte[] Mixer(Settings config, int?[] values)
+    internal static byte[] Mixer(Settings config, int?[] values, string[]? labels = null)
     {
         int gaps = config.Separator switch
         {
@@ -149,7 +151,7 @@ internal sealed class OledDisplayService : IAsyncDisposable
                 channel.Target.Equals(Settings.Master, StringComparison.OrdinalIgnoreCase)).ToArray()),
             _ => 0
         };
-        return OledFrame.Mixer(config.Channels.Select(channel => channel.Label).ToArray(), values, gaps);
+        return OledFrame.Mixer(labels ?? config.Channels.Select(channel => channel.Label).ToArray(), values, gaps);
     }
 
     private static byte[] FrameAt(DisplayMedia media, long elapsed)

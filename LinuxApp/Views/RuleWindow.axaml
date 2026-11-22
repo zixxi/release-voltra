@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Voltra.Linux.Views.RuleWindow"
+        Width="540" Height="420" MinWidth="390" MinHeight="310" WindowStartupLocation="CenterOwner">
+  <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
+    <TextBlock Name="Heading" Classes="section" />
+    <TextBlock Grid.Row="1" Name="Description" Classes="muted" TextWrapping="Wrap" />
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+      <ComboBox Name="Choices" HorizontalAlignment="Stretch" PlaceholderText="Choose an application" MaxDropDownHeight="230" />
+      <Button Grid.Column="1" Name="AddEntry" Content="Add" />
+      <Button Grid.Column="2" Name="Browse" Content="Browse…" />
+    </Grid>
+    <ListBox Grid.Row="3" Name="Entries" Background="{DynamicResource Surface}" />
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <Button Name="RemoveEntry" Content="Remove" HorizontalAlignment="Left" />
+      <Button Grid.Column="1" Name="Cancel" Content="Cancel" />
+      <Button Grid.Column="2" Name="Save" Classes="action" Content="Save" />
+    </Grid>
+  </Grid>
+</Window>

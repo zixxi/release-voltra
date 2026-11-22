@@ -11,11 +11,22 @@ internal sealed class SessionBindings
     internal string?[] Names { get; private set; } = new string?[5];
 
     internal void Resolve(Channel[] channels, bool formatted, IEnumerable<AudioTarget> targets,
-        AudioApplication? focus, IReadOnlySet<string> registered)
+        AudioApplication? focus, IReadOnlySet<string> registered,
+        IReadOnlySet<string>? gameDeny = null, IReadOnlySet<string>? focusAllow = null, IReadOnlySet<string>? focusDeny = null)
     {
         var sessions = targets.OrderBy(t => t.Key.Device, StringComparer.Ordinal)
             .ThenBy(t => t.Key.Session, StringComparer.Ordinal).ToArray();
-        var game = games.Choose(sessions.Select(t => t.App).OfType<AudioApplication>(), focus, registered);
+        var apps = sessions.Select(t => t.App).OfType<AudioApplication>().ToArray();
+        static bool Matches(AudioApplication app, IReadOnlySet<string>? rules) =>
+            rules?.Contains(app.Path) == true || rules?.Contains(app.Key) == true;
+        var blockedGames = apps.Where(app => Matches(app, gameDeny)).Select(app => app.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var game = games.Choose(apps.Where(app => !blockedGames.Contains(app.Key)), focus, registered);
+        if (focus != null)
+        {
+            var focusedApps = apps.Where(app => StringComparer.OrdinalIgnoreCase.Equals(app.Key, focus.Key));
+            if (focusedApps.Any(app => Matches(app, focusDeny)) ||
+                (focusAllow is { Count: > 0 } && !focusedApps.Any(app => Matches(app, focusAllow)))) focus = null;
+        }
         var names = new string?[5];
         for (int i = 0; i < groups.Length; i++)
         {

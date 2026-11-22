@@ -13,6 +13,12 @@ internal static class Program
             return;
         }
 
+        if (LinuxUpdateService.UpdateLocked())
+        {
+            Console.Error.WriteLine("Voltra is installing an update.");
+            return;
+        }
+
         FileStream instance;
         try
         {
@@ -34,7 +40,7 @@ internal static class Program
                 return;
             }
 
-            AppBuilder.Configure<App>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
+            AppBuilder.Configure<App>().UsePlatformDetect().With(new X11PlatformOptions { WmClass = "Voltra" }).StartWithClassicDesktopLifetime(args);
         }
     }
 }

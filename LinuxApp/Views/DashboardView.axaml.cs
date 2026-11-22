@@ -51,7 +51,9 @@ public sealed partial class DashboardView : UserControl
         Preview.Refresh(device);
         for (int i = 0; i < meters.Length; i++)
             meters[i].Set(config.Channels[i].Label, audio.Volumes[i],
-                audio.Waiting[i] ? device.Levels?[i] : null, activeChannel == i, config.Accent);
+                audio.Waiting[i] ? device.Levels?[i] : null, activeChannel == i, config.Accent, DynamicAudio.IsDynamic(config.Channels[i].Target) ?
+                    audio.Targets?[i] ?? (config.Channels[i].Target == DynamicAudio.Game ? "No active game" :
+                    audio.FocusSupported ? "No audio stream" : "Focus unavailable") : null);
     }
 
     internal void InvalidatePreview() => Preview.InvalidatePixels();
@@ -60,6 +62,7 @@ public sealed partial class DashboardView : UserControl
     {
         private readonly int index;
         private string label = "", accent = "";
+        private string? detail;
         private int? volume, waiting;
         private bool active;
         private ThemeVariant? theme;
@@ -75,12 +78,13 @@ public sealed partial class DashboardView : UserControl
 
         internal Meter(int index) => this.index = index;
 
-        internal void Set(string label, int? volume, int? waiting, bool active, string accent)
+        internal void Set(string label, int? volume, int? waiting, bool active, string accent, string? detail)
         {
-            if (this.label == label && this.volume == volume && this.waiting == waiting &&
+            if (this.detail == detail && this.label == label && this.volume == volume && this.waiting == waiting &&
                 this.active == active && this.accent == accent && theme == ActualThemeVariant) return;
-            if (this.label != label || this.waiting != waiting)
-                ToolTip.SetTip(this, waiting is int knob ? $"{label} · waiting for knob at {knob}%" : label);
+            if (this.detail != detail || this.label != label || this.waiting != waiting)
+                ToolTip.SetTip(this, waiting is int knob ? $"{label} · waiting for knob at {knob}%" : detail == null ? label : $"{label} · {detail}");
+            this.detail = detail;
             this.label = label;
             if (this.volume != volume)
             {
@@ -101,13 +105,13 @@ public sealed partial class DashboardView : UserControl
         {
             // Reserve room for the needle, tick marks and both captions at every channel width.
             double radius = Math.Min(availableSize.Width * .33, 61);
-            return new Size(0, Math.Ceiling(2 * radius + 60));
+            return new Size(0, Math.Ceiling(2 * radius + 79));
         }
 
         public override void Render(DrawingContext context)
         {
             base.Render(context);
-            double radius = Math.Min(61, Math.Min(Bounds.Width * .33, (Bounds.Height - 60) / 2));
+            double radius = Math.Min(61, Math.Min(Bounds.Width * .33, (Bounds.Height - 79) / 2));
             if (radius < 10) return;
             var center = new Point(Bounds.Width / 2, radius + 13);
             var app = Application.Current!;
@@ -141,6 +145,11 @@ public sealed partial class DashboardView : UserControl
 
             double captionY = center.Y + radius + 5;
             Caption(label, Font("VoltraFont", FontWeight.SemiBold), 13, text, captionY);
+            if (detail != null)
+            {
+                captionY += 19;
+                Caption(detail, Font("VoltraFont"), 12, muted, captionY);
+            }
             Caption(volume is int current ? $"{current}%" : "—", Font("MeterFont"), 15,
                 volume.HasValue ? text : muted, captionY + 19);
 

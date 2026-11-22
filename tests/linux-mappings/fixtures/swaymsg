@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$*" = "-r -t get_tree" ] || exit 2
+cat "$VOLTRA_TEST_AUDIO/focus"

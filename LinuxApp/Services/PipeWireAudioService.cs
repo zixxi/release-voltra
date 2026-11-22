@@ -5,9 +5,12 @@ using Voltra;
 
 namespace Voltra.Linux;
 
-internal sealed record AudioApplication(string Target, string Name);
-internal sealed record AudioSnapshot(string Status, AudioApplication[] Applications, int?[] Volumes, bool[] Waiting);
-internal sealed record AudioTarget(string Id, string Target, string Name, string[] Aliases, int Level)
+internal sealed record AudioApplication(string Target, string Name, string[]? RuleIds = null);
+internal sealed record AudioSnapshot(string Status, AudioApplication[] Applications, int?[] Volumes, bool[] Waiting, string?[]? Targets = null, bool FocusSupported = true)
+{
+    internal string Label(Channel channel, int i) => DynamicAudio.IsDynamic(channel.Target) ? Targets?[i] ?? channel.Label : channel.Label;
+}
+internal sealed record AudioTarget(string Id, string Target, string Name, string[] Aliases, int Level, AppIdentity? Identity = null, string Serial = "")
 {
     internal bool Matches(string mapping) =>
         Target.Equals(mapping, StringComparison.OrdinalIgnoreCase) || Aliases.Contains(mapping, StringComparer.OrdinalIgnoreCase);
@@ -73,6 +76,10 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
 
     private async Task RunAsync(CancellationToken token)
     {
+        using var foreground = new ForegroundWindow();
+        var resolver = new DynamicAudio();
+        Focus? previousFocus = null;
+        AppIdentity? focusOwner = null;
         var knobs = Enumerable.Range(0, 5).Select(_ => new VolumeTakeover()).ToArray();
         AudioTarget[] targets = [];
         AudioApplication[] apps = [];
@@ -104,8 +111,8 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                     targets = await ReadTargetsAsync(token);
                     apps = [new(Settings.Master, "Master output"), .. targets
                         .Where(x => x.Target != Settings.Master && x.Target.Length > 0)
-                        .DistinctBy(x => x.Target, StringComparer.OrdinalIgnoreCase)
-                        .Select(x => new AudioApplication(x.Target, x.Name)).OrderBy(x => x.Name)];
+                        .GroupBy(x => x.Target, StringComparer.OrdinalIgnoreCase)
+                        .Select(g => new AudioApplication(g.Key, g.First().Name, g.SelectMany(x => x.Identity?.Rules.Take(1) ?? []).Distinct().ToArray())).OrderBy(x => x.Name)];
                     connected = true;
                     lastRefresh = Environment.TickCount64;
                     nextRefresh = lastRefresh + 150;
@@ -117,19 +124,39 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                     bool syncChanged = synced != config.Sync;
                     synced = config.Sync;
                     var readings = device().Levels;
+                    bool dynamic = config.Channels.Any(c => DynamicAudio.IsDynamic(c.Target));
+                    var focus = dynamic ? await foreground.ReadAsync(false, token) : new Focus();
+                    if (dynamic && (focus != previousFocus || lastRefresh >= now))
+                        focusOwner = focus.Pid > 0 ? AppIdentity.Read(focus.Pid, focus.AppId, "", "") : null;
+                    previousFocus = focus;
+                    var selected = dynamic ? resolver.Resolve(targets, DynamicAudio.FocusKey(targets, focus, focusOwner), config.Rules) : default;
+                    var names = new string?[5];
                     for (int i = 0; i < knobs.Length; i++)
                     {
                         var knob = knobs[i];
                         string binding = config.Channels[i].Target.Trim();
-                        var matching = binding.Length == 0 ? [] : targets.Where(x => x.Matches(binding)).ToArray();
-                        var key = string.Join('|', matching.Select(x => x.Id).Order());
+                        bool movingTarget = DynamicAudio.IsDynamic(binding);
+                        var matching = binding switch
+                        {
+                            DynamicAudio.Game => selected.Game,
+                            DynamicAudio.Focused => selected.Focused,
+                            "" => [],
+                            _ => targets.Where(x => x.Matches(binding)).ToArray()
+                        };
+                        if (movingTarget && matching.Length > 0)
+                            matching = matching.Select(member => targets.First(t => t.Id == member.Id && t.Identity?.Key == member.Identity!.Key)).ToArray();
+                        if (movingTarget && matching.Length > 0)
+                            names[i] = config.FormatAppNames ? matching[0].Name : matching[0].Target;
+                        var key = string.Join('|', matching.Select(x => movingTarget
+                            ? $"{x.Id}:{x.Serial}:{x.Identity?.Key}:{x.Identity?.Pid}:{x.Identity?.Lifetime}" : x.Id).Order());
+                        int? current = matching.Length == 0 ? null : (int)Math.Round(matching.Average(x => x.Level));
                         if (assignments[i] != binding || targetSets[i] != key)
                         {
-                            knob.Reset();
+                            if (movingTarget) knob.Rebind(readings?[i], current, config.Sync);
+                            else knob.Reset();
                             assignments[i] = binding;
                             targetSets[i] = key;
                         }
-                        int? current = matching.Length == 0 ? null : (int)Math.Round(matching.Average(x => x.Level));
                         if (knob.Actual != current || syncChanged) knob.ObserveWindows(current, config.Sync);
                         actual[i] = current;
                         if (readings is null)
@@ -146,19 +173,42 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                         if (knob.Move(readings[i], config.Sync, config.Takeover, config.NoiseThreshold) is not int level ||
                             matching.All(target => target.Level == level)) continue;
 
-                        foreach (var target in matching.Where(target => target.Level != level))
+                        if (movingTarget)
                         {
-                            if (Volatile.Read(ref topologyRevision) != seenTopology) break;
+                            // An external mixer change can precede its pactl subscription event.
+                            // Verify membership and levels before writing anything to this group.
+                            var live = await ReadStreamsAsync(token);
+                            var group = live.Where(t => t.Identity?.Key == matching[0].Identity!.Key).OrderBy(t => t.Id, StringComparer.Ordinal);
+                            if (!group.Select(t => (t.Id, t.Serial, t.Identity!.Pid, t.Identity.Lifetime, t.Level)).SequenceEqual(matching.Select(t => (t.Id, t.Serial, t.Identity!.Pid, t.Identity.Lifetime, t.Level))))
+                            {
+                                seenTopology = -1;
+                                knob.ObserveWindows(current, config.Sync);
+                                break;
+                            }
+                        }
+                        bool complete = true;
+                        foreach (var target in matching)
+                        {
+                            if (Volatile.Read(ref topologyRevision) != seenTopology || !ReferenceEquals(settings(), config) ||
+                                (movingTarget && await foreground.ReadAsync(true, token) != focus))
+                            {
+                                complete = false;
+                                break;
+                            }
+                            int desired = movingTarget && config.Sync && config.Takeover == KnobTakeover.Soft
+                                ? Math.Clamp(target.Level + level - current.Value, 0, 100) : level;
+                            if (target.Level == desired) continue;
                             var command = target.Target == Settings.Master ? "set-sink-volume" : "set-sink-input-volume";
-                            await ProcessCommand.RunAsync("pactl", token, command, target.Id, level.ToString(CultureInfo.InvariantCulture) + "%");
-                            var index = Array.IndexOf(targets, target);
-                            if (index >= 0) targets[index] = target with { Level = level };
+                            await ProcessCommand.RunAsync("pactl", token, command, target.Id, desired.ToString(CultureInfo.InvariantCulture) + "%");
+                            var index = Array.FindIndex(targets, t => t.Id == target.Id && t.Target == target.Target);
+                            if (index >= 0) targets[index] = target with { Level = desired };
                         }
                         localWrite = Environment.TickCount64;
-                        knob.Written(level);
-                        actual[i] = level;
+                        if (!complete) { seenTopology = -1; knob.ObserveWindows(current, config.Sync); break; }
+                        actual[i] = (int)Math.Round(matching.Average(t => targets.First(x => x.Id == t.Id && x.Target == t.Target).Level));
+                        knob.Written(actual[i]!.Value);
                     }
-                    Publish("PipeWire connected", apps, actual.ToArray(), knobs.Select(k => k.Waiting).ToArray());
+                    Publish("PipeWire connected", apps, actual.ToArray(), knobs.Select(k => k.Waiting).ToArray(), names, focus.Supported);
                 }
             }
             catch (Exception ex) when (ex is Win32Exception or IOException or TimeoutException or JsonException or InvalidOperationException)
@@ -168,6 +218,7 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                 nextRefresh = Environment.TickCount64 + 1300;
                 targets = [];
                 apps = [];
+                Array.Clear(targetSets);
                 foreach (var knob in knobs) knob.Reset();
                 Publish(ex is Win32Exception ? "pactl is missing. Install pulseaudio-utils." :
                     $"PipeWire unavailable: {ex.Message}", [], new int?[5], new bool[5]);
@@ -185,6 +236,9 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
         await Task.WhenAll(defaultSink, sinks, streams);
         return ParseTargets((await defaultSink).Trim(), await sinks, await streams);
     }
+
+    private static async Task<AudioTarget[]> ReadStreamsAsync(CancellationToken token) =>
+        ParseTargets("", "[]", await ProcessCommand.RunAsync("pactl", token, "--format=json", "list", "sink-inputs"));
 
     internal static AudioTarget[] ParseTargets(string defaultSink, string sinks, string streams)
     {
@@ -205,14 +259,18 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                 .Where(x => x.Length != 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             if (aliases.Length == 0) continue;
             string name = Get(props, "application.name");
+            bool hostPid = int.TryParse(Get(props, "pipewire.sec.pid"), out int pid) && pid > 0;
+            if (!hostPid)
+                int.TryParse(Get(props, "application.process.id"), out pid);
+            var identity = AppIdentity.Read(pid, Get(props, "application.id"), Get(props, "application.process.binary"), Get(props, "media.role"), hostPid);
             result.Add(new(id.ToString(CultureInfo.InvariantCulture), aliases[0],
-                name.Length == 0 ? aliases[0] : name, aliases, level));
+                name.Length == 0 ? aliases[0] : name, aliases, level, identity, Get(props, "object.serial")));
         }
         return result.ToArray();
     }
 
     private static string Get(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+        element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.String or JsonValueKind.Number ? value.ToString() : "";
 
     private static int? ReadLevel(JsonElement item)
     {
@@ -229,8 +287,8 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
         return channels.Count == 0 ? null : (int)Math.Round(channels.Average());
     }
 
-    private void Publish(string status, AudioApplication[] apps, int?[] volumes, bool[] waiting) =>
-        Volatile.Write(ref snapshot, new(status, apps, volumes, waiting));
+    private void Publish(string status, AudioApplication[] apps, int?[] volumes, bool[] waiting, string?[]? names = null, bool supported = true) =>
+        Volatile.Write(ref snapshot, new(status, apps, volumes, waiting, names, supported));
 
     public async ValueTask DisposeAsync()
     {

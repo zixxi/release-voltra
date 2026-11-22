@@ -75,6 +75,24 @@
     </Grid>
 
     <Border Classes="rule" Margin="0,3" />
+    <TextBlock Classes="section" Text="Dynamic audio mappings" />
+    <Grid ColumnDefinitions="172,*" MinHeight="33">
+      <TextBlock Text="Game whitelist" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="GameAllow" Content="Manage…" HorizontalAlignment="Left" AutomationProperties.Name="Manage game whitelist" />
+    </Grid>
+    <Grid ColumnDefinitions="172,*" MinHeight="33">
+      <TextBlock Text="Game blacklist" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="GameDeny" Content="Manage…" HorizontalAlignment="Left" AutomationProperties.Name="Manage game blacklist" />
+    </Grid>
+    <Grid ColumnDefinitions="172,*" MinHeight="33">
+      <TextBlock Text="Focused app whitelist" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="FocusAllow" Content="Manage…" HorizontalAlignment="Left" AutomationProperties.Name="Manage focused app whitelist" />
+    </Grid>
+    <Grid ColumnDefinitions="172,*" MinHeight="33">
+      <TextBlock Text="Focused app blacklist" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="FocusDeny" Content="Manage…" HorizontalAlignment="Left" AutomationProperties.Name="Manage focused app blacklist" />
+    </Grid>
+    <Border Classes="rule" Margin="0,3" />
     <TextBlock Classes="section" Text="Device connection" />
     <Grid MinHeight="33">
       <Grid.ColumnDefinitions>
@@ -103,7 +121,9 @@
     <WrapPanel ItemHeight="39" ItemSpacing="8">
       <Button Name="CheckUpdates" Content="Check for updates" Width="152" />
       <Button Name="ViewRepository" Content="View on GitHub" Width="135" />
-      <Button Name="OpenRelease" Content="Open Linux release" Classes="action" IsVisible="False" />
+      <Button Name="CancelUpdate" Content="Cancel update" IsVisible="False" />
+      <Button Name="ManualRelease" Content="Open release page" IsVisible="False" />
+      <Button Name="OpenRelease" Content="Download verified update" Classes="action" IsVisible="False" />
     </WrapPanel>
     <ScrollViewer Name="NotesViewer" IsVisible="False" MaxHeight="175">
       <TextBlock Name="ReleaseNotes" TextWrapping="Wrap" />
