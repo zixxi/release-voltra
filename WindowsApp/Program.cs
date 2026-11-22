@@ -18,15 +18,40 @@ internal static class Program
                 MessageBox.Show("Finish Voltra Setup before opening the app.", "Voltra");
             return 0;
         }
-        using var instance = new Mutex(true, "PurpleMixer.Desktop", out bool first);
-        if (!first)
+        using var instance = OpenInstanceMutex();
+        if (instance is null) return 1;
+        string pipeName = InstanceActivation.PipeName();
+        var launch = InstanceActivation.ClaimOrNotify(instance, pipeName, minimized);
+        if (launch != Launch.Primary) return launch == Launch.Unavailable ? 1 : 0;
+        try
         {
-            if (!minimized)
-                MessageBox.Show("Voltra is already running. Open it from the system tray.", "Voltra");
-            return 0;
+            // Setup may have started while a previous instance was exiting.
+            if (args is not ["--after-setup"] && Mutex.TryOpenExisting("Voltra.Setup", out var installing))
+            {
+                installing.Dispose();
+                return 0;
+            }
+            return RunPrimary(minimized, pipeName);
         }
+        finally { instance.ReleaseMutex(); }
+    }
+
+    private static Mutex? OpenInstanceMutex()
+    {
+        // The installer checks this exact session-local mutex name.
+        try { return new Mutex(false, "PurpleMixer.Desktop"); }
+        catch (UnauthorizedAccessException ex)
+        {
+            System.Diagnostics.Trace.WriteLine(ex.Message);
+            return null;
+        }
+    }
+
+    private static int RunPrimary(bool minimized, string pipeName)
+    {
+        using var activation = new InstanceActivation(pipeName);
         ApplicationConfiguration.Initialize();
-        using var form = new MixerForm();
+        using var form = new MixerForm(activation);
         using var context = new ApplicationContext();
         form.FormClosed += (_, _) => context.ExitThread();
         // A hidden form still needs a handle so Close runs the normal shutdown events.

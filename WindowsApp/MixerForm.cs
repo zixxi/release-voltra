@@ -42,8 +42,12 @@ internal sealed partial class MixerForm : Form
     private Task settingsSave = Task.CompletedTask;
     private string? startupError;
 
-    internal MixerForm()
+    private readonly InstanceActivation activation;
+    private FormWindowState previousWindowState = FormWindowState.Normal;
+
+    internal MixerForm(InstanceActivation activation)
     {
+        this.activation = activation;
         config = MixerSettings.Load();
         startupError = WindowsStartup.Synchronize(config.LaunchAtWindowsStartup);
         palette = ThemePalette.From(config);
@@ -58,11 +62,15 @@ internal sealed partial class MixerForm : Form
         ClientSize = new Size(1100, 690);
         StartPosition = FormStartPosition.CenterScreen;
         if (config.MediaPath.Length > 0) TryLoadMedia(config.MediaPath, false);
-        trayMenu = new VoltraTrayMenu(() => ThemePalette.From(config), RestoreFromTray, ExitFromTray);
+        trayMenu = new VoltraTrayMenu(() => ThemePalette.From(config), RestoreAndActivateMainWindow, ExitFromTray);
         SetupTray();
         BuildShell();
         SystemEvents.UserPreferenceChanged += SystemThemeChanged;
-        refresh.Tick += (_, _) => UpdateView();
+        refresh.Tick += (_, _) =>
+        {
+            if (activation.TakeRequest()) RestoreAndActivateMainWindow();
+            UpdateView();
+        };
         refresh.Start();
         Shown += (_, _) => BeginInvoke((Action)PrewarmSettings);
         StartUpdateChecks();
@@ -563,29 +571,42 @@ internal sealed partial class MixerForm : Form
     {
         using var dialog = new Form
         {
-            Text = "Edit mappings", StartPosition = FormStartPosition.CenterParent, ClientSize = new(654, 440),
+            Text = "Edit mappings", StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
             ShowInTaskbar = false, BackColor = palette.Background, ForeColor = palette.Text,
-            Font = Font, AutoScaleMode = AutoScaleMode.Dpi
+            Font = Font
         };
+        dialog.SuspendLayout();
+        dialog.AutoScaleDimensions = new SizeF(96, 96);
+        dialog.AutoScaleMode = AutoScaleMode.Dpi;
+        dialog.ClientSize = new(608, 368);
         dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, palette.Dark);
-        var grid = Grid(3, 9);
-        grid.Padding = new(23);
-        grid.ColumnStyles.Add(new(SizeType.Absolute, 58));
-        grid.ColumnStyles.Add(new(SizeType.Percent, 51));
-        grid.ColumnStyles.Add(new(SizeType.Percent, 49));
-        grid.RowStyles.Add(new(SizeType.Absolute, 63));
-        grid.RowStyles.Add(new(SizeType.Absolute, 30));
+        var grid = Grid(3, 10);
+        grid.Padding = new(20, 14, 20, 14);
+        grid.ColumnStyles.Add(new(SizeType.Absolute, 46));
+        grid.ColumnStyles.Add(new(SizeType.Percent, 53));
+        grid.ColumnStyles.Add(new(SizeType.Percent, 47));
+        grid.RowStyles.Add(new(SizeType.Absolute, 49));
+        grid.RowStyles.Add(new(SizeType.Absolute, 25));
+        grid.RowStyles.Add(new(SizeType.Absolute, 6));
         var heading = Grid(1, 2);
-        heading.RowStyles.Add(new(SizeType.Absolute, 33));
+        heading.RowStyles.Add(new(SizeType.Absolute, 28));
         heading.RowStyles.Add(new(SizeType.Percent, 100));
-        heading.Controls.Add(Caption("Edit mappings", 17, bold: true), 0, 0);
-        heading.Controls.Add(Caption("Assign an app and display name to each knob.", 10, muted: true), 0, 1);
+        heading.Controls.Add(Caption("Knob assignments", 15, bold: true), 0, 0);
+        heading.Controls.Add(Caption("Assign an application or mapping mode to each knob.", 10, muted: true), 0, 1);
         grid.Controls.Add(heading, 0, 0);
         grid.SetColumnSpan(heading, 3);
-        grid.Controls.Add(Caption("Knob", 9, muted: true), 0, 1);
-        grid.Controls.Add(Caption("App", 9, muted: true), 1, 1);
-        grid.Controls.Add(Caption("Display name", 9, muted: true), 2, 1);
+        grid.Controls.Add(Caption("Knob", 9, bold: true, muted: true), 0, 1);
+        grid.Controls.Add(Caption("Application / mode", 9, bold: true, muted: true), 1, 1);
+        grid.Controls.Add(Caption("Display name", 9, bold: true, muted: true), 2, 1);
+        void AddRule(int row)
+        {
+            var rule = Divider();
+            rule.Dock = DockStyle.Fill;
+            grid.Controls.Add(rule, 0, row);
+            grid.SetColumnSpan(rule, 3);
+        }
+        AddRule(2);
         var names = new EditField[5];
         var targets = new PickerField[5];
         var specials = new SpecialMapping[] { new(Channel.SystemVolume, "System volume"),
@@ -595,17 +616,11 @@ internal sealed partial class MixerForm : Form
             .Where(name => name.Length > 0 && !name.StartsWith('@'))
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
         var games = new SortedSet<string>(config.RegisteredGames, StringComparer.OrdinalIgnoreCase);
-        grid.CellPaint += (_, e) =>
-        {
-            if (e.Row is < 2 or > 6) return;
-            using var pen = new Pen(palette.Line);
-            e.Graphics.DrawLine(pen, e.CellBounds.Left, e.CellBounds.Top, e.CellBounds.Right, e.CellBounds.Top);
-        };
         for (int i = 0; i < names.Length; i++)
         {
             int index = i;
             grid.RowStyles.Add(new(SizeType.Absolute, 40));
-            grid.Controls.Add(Caption((i + 1).ToString(), 10), 0, i + 2);
+            grid.Controls.Add(Caption((i + 1).ToString(), 10), 0, i + 3);
             int selected = Array.FindIndex(specials, option => option.Id == config.Channels[i].Processes);
             var target = new PickerField(palette, available, selected, editable: true);
             if (selected < 0) target.SetValue(config.Channels[i].Processes);
@@ -616,34 +631,44 @@ internal sealed partial class MixerForm : Form
             name.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             target.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             target.Dock = DockStyle.None;
+            target.Margin = new(0, 0, 12, 0);
+            name.Margin = Padding.Empty;
+            target.TabIndex = 2 * i;
+            name.TabIndex = 2 * i + 1;
             names[i] = name;
             target.Committed += (_, _) =>
                 names[index].Editor.Text = SuggestedName(target.Value, specials[0].Title);
-            grid.Controls.Add(target, 1, i + 2);
-            grid.Controls.Add(name, 2, i + 2);
+            grid.Controls.Add(target, 1, i + 3);
+            grid.Controls.Add(name, 2, i + 3);
         }
 
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom, Height = 40, FlowDirection = FlowDirection.RightToLeft
-        };
-        grid.RowStyles.Add(new(SizeType.Absolute, 20));
-        var separator = Divider();
-        separator.Dock = DockStyle.Fill;
-        grid.Controls.Add(separator, 0, 7);
-        grid.SetColumnSpan(separator, 3);
+        grid.RowStyles.Add(new(SizeType.Absolute, 14));
+        AddRule(8);
         grid.RowStyles.Add(new(SizeType.Percent, 100));
-        var save = ActionButton("Save mappings", () => { }, 130, true);
+        var footer = Grid(3, 1);
+        footer.TabIndex = 10;
+        footer.ColumnStyles.Add(new(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new(SizeType.Absolute, 84));
+        footer.ColumnStyles.Add(new(SizeType.Absolute, 122));
+        var manage = ActionButton("Manage game recognition…", () => EditRecognizedGames(dialog, games), 204);
+        manage.Anchor = AnchorStyles.Left;
+        manage.Margin = Padding.Empty;
+        var cancel = ActionButton("Cancel", () => { }, 76);
+        cancel.Anchor = AnchorStyles.Right;
+        cancel.Margin = new(0, 0, 8, 0);
+        cancel.DialogResult = DialogResult.Cancel;
+        var save = ActionButton("Save mappings", () => { }, 122, true);
+        save.Anchor = AnchorStyles.Right;
+        save.Margin = Padding.Empty;
         save.Primary = true;
         save.DialogResult = DialogResult.OK;
-        var cancel = ActionButton("Cancel", () => { }, 85);
-        cancel.DialogResult = DialogResult.Cancel;
-        buttons.Controls.Add(save);
-        buttons.Controls.Add(cancel);
-        buttons.Controls.Add(ActionButton("Recognized games…", () => EditRecognizedGames(dialog, games), 158));
-        grid.Controls.Add(buttons, 0, 8);
-        grid.SetColumnSpan(buttons, 3);
+        footer.Controls.Add(manage, 0, 0);
+        footer.Controls.Add(cancel, 1, 0);
+        footer.Controls.Add(save, 2, 0);
+        grid.Controls.Add(footer, 0, 9);
+        grid.SetColumnSpan(footer, 3);
         dialog.Controls.Add(grid);
+        dialog.ResumeLayout(true);
         dialog.AcceptButton = save;
         dialog.CancelButton = cancel;
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
@@ -882,16 +907,39 @@ internal sealed partial class MixerForm : Form
         tray.Text = Text;
         tray.Icon = Icon;
         tray.ContextMenuStrip = trayMenu;
-        tray.DoubleClick += (_, _) => RestoreFromTray();
+        tray.DoubleClick += (_, _) => RestoreAndActivateMainWindow();
         tray.Visible = true;
     }
 
-    private void RestoreFromTray()
+    private void RestoreAndActivateMainWindow()
     {
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
+        if (exiting || IsDisposed || Disposing) return;
+        if (WindowState == FormWindowState.Minimized) WindowState = previousWindowState;
+        if (!Visible) Show();
+
+        // Keep a mapping editor, update prompt or native file dialog in front
+        // of its disabled owner when the user relaunches from a shortcut.
+        nint target = IsWindowEnabled(Handle) ? Handle : GetLastActivePopup(Handle);
+        if (target == 0 || !IsWindowVisible(target)) target = Handle;
+        if (GetForegroundWindow() == target || SetForegroundWindow(target)) return;
+        var flash = new FlashInfo { Size = (uint)Marshal.SizeOf<FlashInfo>(), Window = Handle, Flags = 2, Count = 3 };
+        FlashWindowEx(ref flash);
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FlashInfo
+    {
+        internal uint Size;
+        internal nint Window;
+        internal uint Flags, Count, Timeout;
+    }
+
+    [DllImport("user32.dll")] private static extern nint GetLastActivePopup(nint window);
+    [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool IsWindowEnabled(nint window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint window);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll")] private static extern bool FlashWindowEx(ref FlashInfo info);
 
     private void ExitFromTray()
     {
@@ -904,6 +952,7 @@ internal sealed partial class MixerForm : Form
     {
         base.OnResize(e);
         if (WindowState == FormWindowState.Minimized) Hide();
+        else previousWindowState = WindowState;
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -923,6 +972,7 @@ internal sealed partial class MixerForm : Form
         else
         {
             exiting = true;
+            activation.Stop();
             refresh.Stop();
             lifetime.Cancel();
             tray.Visible = false;
