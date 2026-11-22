@@ -11,6 +11,14 @@ internal sealed class VolumeTakeover
 
     internal void Reset() { Hardware = null; Actual = null; Waiting = false; }
 
+    // Discard the input sampled for the previous binding. Only subsequent
+    // movement can take ownership of a newly resolved session group.
+    internal void Rebind(int? physical, int? volume, bool sync)
+    {
+        Hardware = physical;
+        ObserveWindows(volume, sync);
+    }
+
     internal void ObserveWindows(int? value, bool sync)
     {
         Actual = value;
@@ -18,7 +26,7 @@ internal sealed class VolumeTakeover
         anchor = Hardware ?? 0;
     }
 
-    internal int? Move(int value, bool sync, KnobTakeover mode, int threshold)
+    internal int? Move(int value, bool sync, KnobTakeover mode, int threshold, int pickupDistance = 2)
     {
         int? previous = Hardware;
         Hardware = value;
@@ -36,7 +44,7 @@ internal sealed class VolumeTakeover
         if (!sync || !Waiting) return value;
         if (Math.Abs(value - anchor) < threshold) return null;
         if (mode == KnobTakeover.Soft && Actual is int windows &&
-            Math.Abs(value - windows) > 2 &&
+            Math.Abs(value - windows) > pickupDistance &&
             (Math.Min(anchor, value) > windows || Math.Max(anchor, value) < windows))
             return null;
 

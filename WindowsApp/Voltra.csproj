@@ -4,7 +4,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <ApplicationIcon>Voltra.ico</ApplicationIcon>
+    <ApplicationIcon>../assets/branding/voltra.ico</ApplicationIcon>
     <Product>Voltra</Product>
     <AssemblyTitle>Voltra</AssemblyTitle>
     <Description>Desktop Audio Controller</Description>
@@ -12,6 +12,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="WindowsPaint" />
+    <EmbeddedResource Include="$(ApplicationIcon)" LogicalName="Voltra.Brand.ico" />
     <AssemblyMetadata Include="UpdateRepository" Value="$(VoltraUpdateRepository)" />
     <AssemblyMetadata Include="UpdatePublicKey" Value="$(VoltraUpdatePublicKey)" />
     <AssemblyMetadata Include="ProjectLicense" Value="$(VoltraProjectLicense)" />

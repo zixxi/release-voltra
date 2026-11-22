@@ -50,11 +50,6 @@ internal enum OledPage { Mixer, Clock, Weather, Media, Uptime }
 internal enum MixerSeparator { Automatic, ChannelFive, Disabled }
 internal enum AppTheme { Dark, Light, System }
 
-internal sealed record Channel(string Label, string Processes)
-{
-    internal const string SystemVolume = "@master";
-}
-
 internal sealed record MixerSettings
 {
     internal const string DefaultAccent = "#B78BFA";
@@ -78,6 +73,7 @@ internal sealed record MixerSettings
     public MixerSeparator Separator { get; init; }
     public string City { get; init; } = "";
     public string MediaPath { get; init; } = "";
+    public string[] RegisteredGames { get; init; } = [];
     public Channel[] Channels { get; init; } =
     [
         new("Spotify", "Spotify.exe"), new("Discord", "Discord.exe"),
@@ -96,6 +92,9 @@ internal sealed record MixerSettings
             {
                 var normalized = settings with
                 {
+                    RegisteredGames = (settings.RegisteredGames ?? []).Where(path => !string.IsNullOrEmpty(path) &&
+                        Path.IsPathFullyQualified(path)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    Channels = settings.Channels.Select(channel => new Channel(channel.Label ?? "", channel.Processes ?? "")).ToArray(),
                     PreferredPort = settings.PreferredPort ?? "",
                     TakeoverMode = Enum.IsDefined(settings.TakeoverMode) ? settings.TakeoverMode : KnobTakeover.Soft,
                     KnobNoiseThreshold = Math.Clamp(settings.KnobNoiseThreshold, 1, 5),

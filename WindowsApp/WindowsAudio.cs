@@ -1,3 +1,4 @@
+using static Voltra.AudioTarget;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -9,22 +10,38 @@ namespace Voltra;
 internal sealed class WindowsAudio(Action signal) : IDisposable
 {
     private readonly Guid context = Guid.NewGuid();
-    private readonly Dictionary<(string Device, string Session), Target> targets = [];
-    private readonly ConcurrentQueue<Target> changes = new();
+    private readonly Dictionary<(string Device, string Session), AudioTarget> targets = [];
+    private readonly ConcurrentQueue<AudioTarget> changes = new();
     private MMDeviceEnumerator? enumerator;
     private IDeviceEnumerator? nativeEnumerator;
     private MMDevice? masterDevice;
-    private Target? master;
+    private AudioTarget? master;
     private const string Master = "@endpoint";
 
-    internal string[] Refresh(Channel[] channels)
+    internal SessionBindings Bindings { get; } = new();
+    private readonly Dictionary<uint, AudioApplication?> owners = [];
+    private HashSet<string> registered = new(StringComparer.OrdinalIgnoreCase);
+    private string[]? registeredPaths;
+    private uint foregroundPid;
+    private nint foregroundWindow;
+    private bool hasDynamicMappings;
+
+    internal string[] Refresh(MixerSettings settings)
     {
+        var channels = settings.Channels;
+        hasDynamicMappings = channels.Any(channel => channel.Dynamic);
+        if (!ReferenceEquals(registeredPaths, settings.RegisteredGames))
+        {
+            registeredPaths = settings.RegisteredGames;
+            registered = new(registeredPaths, StringComparer.OrdinalIgnoreCase);
+        }
+        owners.Clear();
         var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<(string, string)>();
         var bindings = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < channels.Length; i++)
         {
-            if (channels[i].Processes == Channel.SystemVolume) continue;
+            if (channels[i].Processes.StartsWith('@')) continue;
             foreach (string name in channels[i].Processes.Split([',', ';'],
                          StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
                 bindings.TryAdd(name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe", i);
@@ -45,7 +62,7 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
             ScanMaster(Array.FindIndex(channels, channel => channel.Processes == Channel.SystemVolume));
             if (master is not null) seen.Add(master.Key);
         }
-        catch (Exception ex) when (Unavailable(ex)) { }
+        catch (Exception ex) when (Unavailable(ex)) { ReleaseMaster(); }
 
         foreach (var key in targets.Keys.Where(key => !seen.Contains(key)).ToArray())
         {
@@ -55,53 +72,109 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
         return [.. names];
     }
 
+    private AudioApplication? Owner(uint pid)
+    {
+        if (!owners.TryGetValue(pid, out var app))
+            owners[pid] = app = WindowsApplicationIdentity.Read(pid);
+        return app;
+    }
+
     private void ScanSessions(string deviceId, Dictionary<string, int> bindings, SortedSet<string> names,
         HashSet<(string, string)> seen)
     {
         Check(nativeEnumerator!.GetDevice(deviceId, out var device));
+        using var deviceRef = new ComReference(device);
         Check(device.Activate(typeof(ISessionManager).GUID, 23, IntPtr.Zero, out var service));
+        using var serviceRef = new ComReference(service);
         Check(((ISessionManager)service).GetSessionEnumerator(out var sessions));
+        using var sessionsRef = new ComReference(sessions);
         Check(sessions.GetCount(out int count));
         for (int i = 0; i < count; i++)
         {
             try
             {
                 Check(sessions.GetSession(i, out var control));
+                using var sessionRef = new ComReference(control);
                 if (control is not IAudioSessionControl2 session) continue;
                 Check(session.GetState(out var state));
                 if (state == AudioSessionState.AudioSessionStateExpired) continue;
-                Check(session.GetProcessId(out uint pid));
+                int ownership = session.GetProcessId(out uint pid);
+                Check(ownership);
                 if (pid == 0) continue;
                 using var process = Process.GetProcessById((int)pid);
                 string name = process.ProcessName + ".exe";
                 names.Add(name);
-                if (!bindings.TryGetValue(name, out int channel)) continue;
+                int channel = bindings.GetValueOrDefault(name, -1);
+                if (channel < 0 && !hasDynamicMappings) continue;
                 Check(session.GetSessionInstanceIdentifier(out string instance));
                 var key = (deviceId, instance);
-                if (targets.TryGetValue(key, out var existing) && existing.Channel != channel)
+                targets.TryGetValue(key, out var target);
+                // A cross-process session's creator PID does not establish exclusive ownership.
+                AudioApplication? app = null;
+                if (hasDynamicMappings && ownership == 0 && session.IsSystemSoundsSession() == 1)
+                    owners[pid] = app = target?.App ?? Owner(pid);
+                if (channel < 0 && app is null) continue;
+                if (target is null)
                 {
-                    existing.Dispose();
-                    targets.Remove(key);
-                }
-                if (!targets.ContainsKey(key))
-                {
-                    var volume = (ISessionVolume)control;
-                    Check(volume.Get(out float initial));
-                    var target = new Target(key, channel, Percent(initial),
-                        () => { Check(volume.Get(out float value)); return value; },
-                        value => Check(volume.Set(value, context)));
-                    var subscription = new SessionEvents(context, () => Enqueue(target));
-                    Check(control.RegisterAudioSessionNotification(subscription));
-                    target.Unsubscribe = () => control.UnregisterAudioSessionNotification(subscription);
+                    target = Subscribe(key, channel, control);
+                    sessionRef.Transfer(); // subscription now owns this COM reference
                     targets.Add(key, target);
-                    // Read again after subscribing so the first snapshot covers setup races.
                     target.Level = Percent(target.Read());
                 }
+                target.Channel = channel;
+                target.App = app;
                 seen.Add(key);
             }
             catch (Exception ex) when (Unavailable(ex)) { }
         }
     }
+
+    private AudioTarget Subscribe((string, string) key, int channel, IAudioSessionControl control)
+    {
+        var volume = (ISessionVolume)control;
+        float Read() { Check(volume.Get(out float value)); return value; }
+        var target = new AudioTarget(key, channel, Percent(Read()), Read, value => Check(volume.Set(value, context)));
+        var subscription = new SessionEvents(context, () => Enqueue(target));
+        Check(control.RegisterAudioSessionNotification(subscription));
+        target.Unsubscribe = () =>
+        {
+            try { control.UnregisterAudioSessionNotification(subscription); }
+            finally { Marshal.ReleaseComObject(control); }
+        };
+        return target;
+    }
+
+    private sealed class ComReference(object value) : IDisposable
+    {
+        private bool owns = true;
+        internal void Transfer() => owns = false;
+        public void Dispose() { if (owns) Marshal.ReleaseComObject(value); }
+    }
+
+    // Called on the audio worker. Between discovery passes only a foreground
+    // change requires resolving the cached audio sessions again.
+    internal void Resolve(MixerSettings settings, bool scan)
+    {
+        nint window = 0;
+        string windowClass = "";
+        uint pid = hasDynamicMappings ? WindowsApplicationIdentity.ForegroundPid(out window, out windowClass) : 0;
+        if (!scan && window == foregroundWindow && pid == foregroundPid) return;
+        foregroundWindow = window;
+        foregroundPid = pid;
+        var focus = pid != 0 ? Owner(pid) : null;
+        // Java is a shared executable. Treat only this process instance as
+        // Minecraft after seeing both the game's graphics window and title.
+        if (focus is not null && WindowsApplicationIdentity.MinecraftWindow(window, windowClass, focus))
+        {
+            owners[pid] = focus = focus with { RecognizedGame = true, Name = "Minecraft" };
+            foreach (var target in targets.Values)
+                if (target.App?.Key == focus.Key) target.App = focus;
+        }
+        Bindings.Resolve(settings.Channels, settings.FormatAppNames, targets.Values, focus, registered);
+    }
+
+    internal bool ForegroundUnchanged() =>
+        WindowsApplicationIdentity.ForegroundPid(out var window, out _) == foregroundPid && window == foregroundWindow;
 
     private void ScanMaster(int channel)
     {
@@ -115,7 +188,7 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
             ReleaseMaster();
             var volume = device.AudioEndpointVolume;
             volume.NotificationGuid = context;
-            var target = new Target(key, channel, Percent(volume.MasterVolumeLevelScalar),
+            var target = new AudioTarget(key, channel, Percent(volume.MasterVolumeLevelScalar),
                 () => volume.MasterVolumeLevelScalar, value => volume.MasterVolumeLevelScalar = value);
             AudioEndpointVolumeNotificationDelegate callback = change =>
             {
@@ -143,7 +216,7 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
         masterDevice = null;
     }
 
-    private void Enqueue(Target target)
+    private void Enqueue(AudioTarget target)
     {
         changes.Enqueue(target);
         signal();
@@ -161,36 +234,10 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
                 int actual = Percent(current.Read());
                 if (actual == current.Level) continue;
                 current.Level = actual;
-                external(current.Channel, actual);
+                Bindings.Notify(current, actual, external);
             }
             catch (Exception ex) when (Unavailable(ex)) { }
         }
-    }
-
-    internal (object? Source, int? Volume) Current(int channel)
-    {
-        var target = targets.Values.FirstOrDefault(target => target.Channel == channel);
-        return (target, target?.Level);
-    }
-
-    internal int? Apply(int channel, int value)
-    {
-        int? actual = null;
-        foreach (var target in targets.Values)
-        {
-            if (target.Channel != channel) continue;
-            try
-            {
-                if (target.Level != value)
-                {
-                    target.Write(value / 100f);
-                    target.Level = Percent(target.Read());
-                }
-                actual ??= target.Level;
-            }
-            catch (Exception ex) when (Unavailable(ex)) { }
-        }
-        return actual;
     }
 
     public void Dispose()
@@ -198,29 +245,11 @@ internal sealed class WindowsAudio(Action signal) : IDisposable
         ReleaseMaster();
         foreach (var target in targets.Values) target.Dispose();
         targets.Clear();
+        if (nativeEnumerator is not null) Marshal.ReleaseComObject(nativeEnumerator);
         enumerator?.Dispose();
     }
 
-    private static int Percent(float value) => Math.Clamp((int)Math.Round(value * 100), 0, 100);
     private static void Check(int result) => Marshal.ThrowExceptionForHR(result);
-    private static bool Unavailable(Exception ex) => ex is COMException or ArgumentException or
-        InvalidOperationException or InvalidCastException or System.ComponentModel.Win32Exception;
-
-    private sealed class Target((string Device, string Session) key, int channel, int level, Func<float> read,
-        Action<float> write) : IDisposable
-    {
-        internal (string Device, string Session) Key { get; } = key;
-        internal int Channel { get; } = channel;
-        internal int Level = level;
-        internal Func<float> Read { get; } = read;
-        internal Action<float> Write { get; } = write;
-        internal Action? Unsubscribe;
-        public void Dispose()
-        {
-            try { Unsubscribe?.Invoke(); }
-            catch (Exception ex) when (Unavailable(ex)) { }
-        }
-    }
 
     [ComVisible(true)]
     [ClassInterface(ClassInterfaceType.None)]

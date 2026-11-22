@@ -50,7 +50,7 @@ OutputDir=Output
 OutputBaseFilename={#MyAppName}-{#MyAppVersion}-win-x64
 
 ; Installer appearance
-SetupIconFile=..\WindowsApp\Voltra.ico
+SetupIconFile=..\assets\branding\voltra.ico
 WizardStyle=modern
 SolidCompression=yes
 Compression=lzma2

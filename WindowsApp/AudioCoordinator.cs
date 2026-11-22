@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Voltra;
 
-internal sealed record AudioSnapshot(int?[] Levels, bool[] Waiting, string[] Apps);
+internal sealed record AudioSnapshot(int?[] Levels, bool[] Waiting, string[] Apps, string?[] Names);
 
 internal sealed class AudioCoordinator : IDisposable
 {
@@ -13,7 +13,7 @@ internal sealed class AudioCoordinator : IDisposable
     private MixerSettings settings;
     private Input input = new(null, 0, 0);
     private int connectionEpoch;
-    private AudioSnapshot snapshot = new(new int?[5], new bool[5], []);
+    private AudioSnapshot snapshot = new(new int?[5], new bool[5], [], new string?[5]);
 
     internal AudioCoordinator(MixerSettings settings)
     {
@@ -47,7 +47,7 @@ internal sealed class AudioCoordinator : IDisposable
         VolumeTakeover[] channels = Enumerable.Range(0, 5).Select(_ => new VolumeTakeover()).ToArray();
         var sources = new object?[5];
         Channel[]? mappings = null;
-        bool? previousSync = null;
+        bool? previousSync = null, previousFormatting = null;
         Input? consumed = null;
         string[] apps = [];
         long nextScan = 0, nextReport = Environment.TickCount64 + 10_000;
@@ -57,9 +57,6 @@ internal sealed class AudioCoordinator : IDisposable
         {
             long now = Environment.TickCount64;
             var config = Volatile.Read(ref settings);
-            var latest = Volatile.Read(ref input);
-            if (consumed?.ConnectionEpoch != latest.ConnectionEpoch)
-                foreach (var channel in channels) channel.Disconnect();
             bool remapped = !ReferenceEquals(mappings, config.Channels);
             bool syncChanged = previousSync != config.WindowsVolumeSync;
             if (remapped)
@@ -74,24 +71,32 @@ internal sealed class AudioCoordinator : IDisposable
             }
             previousSync = config.WindowsVolumeSync;
 
-            if (!remapped) audio.Drain(ExternalChange);
-            if (now >= nextScan || remapped)
+            bool scan = now >= nextScan || remapped;
+            if (scan)
             {
-                apps = audio.Refresh(config.Channels);
+                apps = audio.Refresh(config);
                 nextScan = now + 950;
-                for (int channel = 0; channel < channels.Length; channel++)
+            }
+            audio.Resolve(config, scan || config.FormatAppNames != previousFormatting);
+            previousFormatting = config.FormatAppNames;
+            var latest = Volatile.Read(ref input);
+            if (consumed?.ConnectionEpoch != latest.ConnectionEpoch)
+                foreach (var channel in channels) channel.Disconnect();
+            for (int channel = 0; channel < channels.Length; channel++)
+            {
+                var (source, volume) = audio.Bindings.Current(channel);
+                if (ReferenceEquals(sources[channel], source)) continue;
+                sources[channel] = source;
+                if (config.Channels[channel].Dynamic)
+                    channels[channel].Rebind(latest.Values?[channel], volume, config.WindowsVolumeSync);
+                else
                 {
-                    var (source, volume) = audio.Current(channel);
-                    if (!ReferenceEquals(sources[channel], source))
-                    {
-                        sources[channel] = source;
-                        channels[channel].ObserveWindows(volume, config.WindowsVolumeSync);
-                    }
+                    channels[channel].ObserveWindows(volume, config.WindowsVolumeSync);
                     if (!config.WindowsVolumeSync && channels[channel].Hardware is int position && source is not null)
                         Write(channel, position);
                 }
-                audio.Drain(ExternalChange);
             }
+            audio.Drain(ExternalChange);
 
             if (syncChanged && latest.Values is not null)
             {
@@ -99,7 +104,7 @@ internal sealed class AudioCoordinator : IDisposable
                 {
                     if (config.WindowsVolumeSync)
                         channels[channel].ObserveWindows(channels[channel].Actual, true);
-                    else if (channels[channel].Hardware is int position)
+                    else if (!config.Channels[channel].Dynamic && channels[channel].Hardware is int position)
                         Write(channel, position);
                 }
             }
@@ -114,8 +119,9 @@ internal sealed class AudioCoordinator : IDisposable
                     {
                         bool wasWaiting = channels[index].Waiting;
                         int? value = channels[index].Move(latest.Values[index], config.WindowsVolumeSync,
-                            config.TakeoverMode, config.KnobNoiseThreshold);
-                        if (value is int position) Write(index, position);
+                            config.TakeoverMode, config.KnobNoiseThreshold,
+                            config.Channels[index].Dynamic ? config.KnobNoiseThreshold : 2);
+                        if (value is int position && (!config.Channels[index].Dynamic || sources[index] is not null)) Write(index, position);
                         if (wasWaiting != channels[index].Waiting)
                             MixerDiagnostics.Log($"Channel {index + 1}: {(channels[index].Waiting ? "waiting for knob" : "hardware control")}");
                     }
@@ -130,8 +136,8 @@ internal sealed class AudioCoordinator : IDisposable
             int?[] actual = channels.Select(channel => channel.Actual).ToArray();
             bool[] waiting = channels.Select(channel => channel.Waiting).ToArray();
             if (!published.Levels.AsSpan().SequenceEqual(actual) || !published.Waiting.AsSpan().SequenceEqual(waiting) ||
-                !published.Apps.AsSpan().SequenceEqual(apps))
-                Volatile.Write(ref snapshot, new(actual, waiting, apps));
+                !published.Apps.AsSpan().SequenceEqual(apps) || !ReferenceEquals(published.Names, audio.Bindings.Names))
+                Volatile.Write(ref snapshot, new(actual, waiting, apps, audio.Bindings.Names));
 
             if (now >= nextReport)
             {
@@ -145,16 +151,24 @@ internal sealed class AudioCoordinator : IDisposable
 
             void ExternalChange(int index, int value)
             {
-                channels[index].ObserveWindows(value, config.WindowsVolumeSync);
+                if (config.Channels[index].Dynamic)
+                    channels[index].Rebind(latest.Values?[index], value, config.WindowsVolumeSync);
+                else
+                    channels[index].ObserveWindows(value, config.WindowsVolumeSync);
                 if (config.WindowsVolumeSync)
                     MixerDiagnostics.Log($"Channel {index + 1}: external volume {value}%.");
-                else if (channels[index].Hardware is int position)
+                else if (!config.Channels[index].Dynamic && channels[index].Hardware is int position)
                     Write(index, position);
             }
 
             void Write(int index, int value)
             {
-                if (audio.Apply(index, value) is int actual) channels[index].Written(actual);
+                if (!ReferenceEquals(config.Channels, Volatile.Read(ref settings).Channels)) return;
+                bool dynamicMapping = config.Channels[index].Dynamic;
+                int? actual = audio.Bindings.Apply(index, value, dynamicMapping, config.WindowsVolumeSync,
+                    config.TakeoverMode, audio.ForegroundUnchanged, (other, level) => channels[other].ObserveWindows(level, config.WindowsVolumeSync));
+                if (actual.HasValue) channels[index].Written(actual.Value);
+                else if (dynamicMapping) channels[index].ObserveWindows(channels[index].Actual, config.WindowsVolumeSync);
             }
         }
     }

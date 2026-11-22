@@ -62,8 +62,13 @@ internal sealed class KnobReadout : Control
     private readonly Font nameFont = new("Segoe UI Semibold", UiMetrics.Body);
     private readonly Font valueFont = new("Consolas", 13);
     private readonly UiMotion motion;
+    private readonly Pen track, accent, tick, marker, needle;
+    private readonly SolidBrush hub;
+    private int penDpi;
+    private bool penActive;
     private readonly ToolTip tooltip = new();
     private string label = "";
+    private string? detail;
     private int? level, physical;
     private bool active;
 
@@ -71,6 +76,12 @@ internal sealed class KnobReadout : Control
     {
         this.palette = palette;
         this.channel = channel;
+        track = new(palette.Line);
+        accent = new(palette.Accent);
+        tick = new(palette.Muted);
+        marker = new(palette.Muted);
+        needle = new(palette.Accent);
+        hub = new(palette.Accent);
         motion = new(this, 110, Invalidate);
         DoubleBuffered = true;
         ResizeRedraw = true;
@@ -78,18 +89,24 @@ internal sealed class KnobReadout : Control
         AccessibleRole = AccessibleRole.StaticText;
     }
 
-    internal void Set(string name, int? value, bool moved, int? waitingPosition)
+    internal void Set(string name, int? value, bool moved, int? waitingPosition, string? target = null)
     {
-        if (name == label && value == level && moved == active && physical == waitingPosition) return;
-        if (name != label || physical != waitingPosition)
-            tooltip.SetToolTip(this, waitingPosition.HasValue ? $"{name} · waiting for knob" : name);
+        if (value.HasValue) value = Math.Clamp(value.Value, 0, 100);
+        if (waitingPosition.HasValue) waitingPosition = Math.Clamp(waitingPosition.Value, 0, 100);
+        if (name == label && value == level && moved == active && physical == waitingPosition && detail == target) return;
+        if (name != label || physical != waitingPosition || detail != target)
+        {
+            string caption = target is null ? name : $"{name} — {target}";
+            tooltip.SetToolTip(this, waitingPosition.HasValue ? $"{caption} · waiting for knob" : caption);
+        }
+        detail = target;
         physical = waitingPosition;
         bool firstReading = level is null;
         label = name;
         level = value;
         motion.Move(value ?? 0, firstReading || value is null);
         active = moved;
-        AccessibleName = $"Knob {channel + 1}, {label}, {(level is int n ? $"{n} percent" : "audio session unavailable")}";
+        AccessibleName = $"Knob {channel + 1}, {label} {detail}, {(level is int n ? $"{n} percent" : "audio session unavailable")}";
         Invalidate();
     }
 
@@ -99,22 +116,24 @@ internal sealed class KnobReadout : Control
         g.Clear(palette.Background);
         if (Width < 30 || Height < 68) return;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        float scale = DeviceDpi / 96f;
+        float scale = Math.Max(1, DeviceDpi) / 96f;
         float radius = Math.Min(Width * 0.33f, Height * 0.28f);
         var center = new PointF(Width / 2f, radius + 16 * scale);
         var arc = new RectangleF(center.X - radius, center.Y - radius, radius * 2, radius * 2);
-        const float start = 135;
-        const float sweep = 270;
-        using var track = new Pen(palette.Line, 5 * scale);
-        using var accent = new Pen(palette.Accent, (active ? 6 : 5) * scale);
+        const float start = GaugeArc.Start, sweep = GaugeArc.Sweep;
+        if (penDpi != DeviceDpi || penActive != active)
+        {
+            penDpi = DeviceDpi;
+            penActive = active;
+            track.Width = 5 * scale;
+            accent.Width = (active ? 6 : 5) * scale;
+            tick.Width = 1.2f * scale;
+            marker.Width = 2.2f * scale;
+            needle.Width = 2.5f * scale;
+        }
         g.DrawArc(track, arc, start, sweep);
 
-        PointF PointAt(float angle, float distance)
-        {
-            double rad = angle * Math.PI / 180;
-            return new(center.X + (float)Math.Cos(rad) * distance, center.Y + (float)Math.Sin(rad) * distance);
-        }
-        using var tick = new Pen(palette.Muted, 1.2f * scale);
+        PointF PointAt(float angle, float distance) => GaugeArc.Point(center, angle, Math.Max(0, distance));
         for (int i = 0; i <= 10; i++)
         {
             float angle = start + sweep * i / 10;
@@ -123,16 +142,15 @@ internal sealed class KnobReadout : Control
         if (physical is int knob)
         {
             float angle = start + sweep * knob / 100;
-            using var marker = new Pen(palette.Muted, 2.2f * scale);
             g.DrawLine(marker, PointAt(angle, radius + 4 * scale), PointAt(angle, radius + 11 * scale));
         }
         if (level.HasValue)
         {
-            float filled = sweep * motion.Value / 100;
-            if (filled > 0) g.DrawArc(accent, arc, start, filled);
-            using var needle = new Pen(palette.Accent, 2.5f * scale);
+            float filled = GaugeArc.Degrees(motion.Value);
+            Span<PointF> points = stackalloc PointF[GaugeArc.Segments + 1];
+            int count = GaugeArc.Fill(points, center, radius, filled);
+            if (count >= 2) g.DrawLines(accent, points[..count]);
             g.DrawLine(needle, center, PointAt(start + filled, radius - 9 * scale));
-            using var hub = new SolidBrush(palette.Accent);
             g.FillEllipse(hub, center.X - 3.5f * scale, center.Y - 3.5f * scale, 7 * scale, 7 * scale);
         }
 
@@ -141,13 +159,30 @@ internal sealed class KnobReadout : Control
         int captionY = (int)(center.Y + radius + 10 * scale);
         int lineHeight = (int)Math.Ceiling(23 * scale);
         TextRenderer.DrawText(g, label, nameFont, new Rectangle(1, captionY, Width - 2, lineHeight), palette.Text, align);
+        if (detail is not null)
+        {
+            captionY += lineHeight;
+            TextRenderer.DrawText(g, detail, Font, new Rectangle(1, captionY, Width - 2, lineHeight), palette.Muted, align);
+        }
         TextRenderer.DrawText(g, level is int n ? $"{n}%" : "—", valueFont,
             new Rectangle(1, captionY + lineHeight, Width - 2, lineHeight), level.HasValue ? palette.Text : palette.Muted, align);
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { motion.Dispose(); tooltip.Dispose(); nameFont.Dispose(); valueFont.Dispose(); }
+        if (disposing)
+        {
+            motion.Dispose();
+            tooltip.Dispose();
+            nameFont.Dispose();
+            valueFont.Dispose();
+            track.Dispose();
+            accent.Dispose();
+            tick.Dispose();
+            marker.Dispose();
+            needle.Dispose();
+            hub.Dispose();
+        }
         base.Dispose(disposing);
     }
 }
@@ -175,7 +210,7 @@ internal sealed class FramePreview : Control
         if (!changed && overlay == label && reading == value) return;
         frame = pixels;
         overlay = label;
-        reading = value;
+        reading = Math.Clamp(value, 0, 100);
         if (changed)
         {
             int width = OledRenderer.Width, height = OledRenderer.Height;
@@ -224,8 +259,9 @@ internal sealed class FramePreview : Control
             TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
         var bar = new Rectangle(description.X, area.Y + area.Height * 53 / 64, description.Width, area.Height * 9 / 64);
         e.Graphics.DrawRectangle(Pens.White, bar);
-        e.Graphics.FillRectangle(Brushes.White, Rectangle.Inflate(
-            new Rectangle(bar.X, bar.Y, Math.Max(2, bar.Width * reading / 100), bar.Height), -1, -1));
+        int fillWidth = (int)(bar.Width * (reading / 100d)) - 2;
+        if (fillWidth > 0 && bar.Height > 2)
+            e.Graphics.FillRectangle(Brushes.White, bar.X + 1, bar.Y + 1, fillWidth, bar.Height - 2);
     }
 
     protected override void Dispose(bool disposing)

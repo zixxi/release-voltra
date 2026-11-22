@@ -1,0 +1,59 @@
+[1mdiff --git a/LinuxApp/Styles/VoltraControls.axaml b/LinuxApp/Styles/VoltraControls.axaml[m
+[1mindex 0792642..65e81c4 100644[m
+[1m--- a/LinuxApp/Styles/VoltraControls.axaml[m
+[1m+++ b/LinuxApp/Styles/VoltraControls.axaml[m
+[36m@@ -3,7 +3,7 @@[m
+         <Setter Property="Background" Value="{DynamicResource Workspace}" />[m
+         <Setter Property="Foreground" Value="{DynamicResource Text}" />[m
+         <Setter Property="FontFamily" Value="{StaticResource VoltraFont}" />[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource BodySize}" />[m
+[32m+[m[32m        <Setter Property="FontSize" Value="13" />[m
+         <Setter Property="UseLayoutRounding" Value="True" />[m
+     </Style>[m
+     <Style Selector="TextBlock.section">[m
+[36m@@ -12,11 +12,11 @@[m
+     </Style>[m
+     <Style Selector="TextBlock.muted">[m
+         <Setter Property="Foreground" Value="{DynamicResource Muted}" />[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource CaptionSize}" />[m
+[32m+[m[32m        <Setter Property="FontSize" Value="12" />[m
+     </Style>[m
+     <Style Selector="TextBlock.error">[m
+         <Setter Property="Foreground" Value="{DynamicResource Error}" />[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource CaptionSize}" />[m
+[32m+[m[32m        <Setter Property="FontSize" Value="12" />[m
+     </Style>[m
+     <Style Selector="Border.rule">[m
+         <Setter Property="Background" Value="{DynamicResource Line}" />[m
+[36m@@ -31,7 +31,6 @@[m
+     </Style>[m
+ [m
+     <Style Selector="Button">[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource ControlSize}" />[m
+         <Setter Property="Cursor" Value="Hand" />[m
+         <Setter Property="Background" Value="{DynamicResource Surface}" />[m
+         <Setter Property="Foreground" Value="{DynamicResource Text}" />[m
+[36m@@ -68,7 +67,6 @@[m
+     <Style Selector="Button.action:pressed"><Setter Property="Background" Value="{DynamicResource PrimaryPressed}" /></Style>[m
+     <Style Selector="Button.action:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource AccentForeground}" /></Style>[m
+     <Style Selector="Button.nav">[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource BodySize}" />[m
+         <Setter Property="HorizontalAlignment" Value="Stretch" />[m
+         <Setter Property="HorizontalContentAlignment" Value="Left" />[m
+         <Setter Property="Padding" Value="12,0,6,0" />[m
+[36m@@ -95,7 +93,6 @@[m
+     <Style Selector="Button.swatch.selected"><Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" /></Style>[m
+ [m
+     <Style Selector="TextBox">[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource ControlSize}" />[m
+         <Setter Property="MinHeight" Value="30" />[m
+         <Setter Property="VerticalContentAlignment" Value="Center" />[m
+         <Setter Property="Padding" Value="9,0" />[m
+[36m@@ -114,7 +111,6 @@[m
+         <Setter Property="BorderThickness" Value="{Binding BorderThickness, RelativeSource={RelativeSource TemplatedParent}}" />[m
+     </Style>[m
+     <Style Selector="ComboBox">[m
+[31m-        <Setter Property="FontSize" Value="{StaticResource ControlSize}" />[m
+         <Setter Property="MinHeight" Value="30" />[m
+         <Setter Property="Padding" Value="9,0" />[m
+         <Setter Property="Background" Value="{DynamicResource Surface}" />[m

@@ -13,6 +13,7 @@ internal sealed partial class MixerForm : Form
     private readonly OledRenderer renderer = new();
     private readonly WeatherService weatherService = new();
     private readonly CancellationTokenSource lifetime = new();
+    private readonly Icon brandIcon = new(typeof(MixerForm), "Brand.ico");
     private readonly NotifyIcon tray = new();
     private readonly ToolTip tips = new();
     private readonly VoltraTrayMenu trayMenu;
@@ -48,7 +49,7 @@ internal sealed partial class MixerForm : Form
         palette = ThemePalette.From(config);
         link = new(config);
         Text = "Voltra";
-        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        Icon = brandIcon;
         Font = new("Segoe UI", UiMetrics.Body);
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -553,6 +554,11 @@ internal sealed partial class MixerForm : Form
         public override string ToString() => Label;
     }
 
+    private sealed record SpecialMapping(string Id, string Title)
+    {
+        public override string ToString() => Title;
+    }
+
     private void EditMappings()
     {
         using var dialog = new Form
@@ -582,11 +588,13 @@ internal sealed partial class MixerForm : Form
         grid.Controls.Add(Caption("Display name", 9, muted: true), 2, 1);
         var names = new EditField[5];
         var targets = new PickerField[5];
-        const string master = "System volume";
-        string[] available = [master, .. link.State.Apps
+        var specials = new SpecialMapping[] { new(Channel.SystemVolume, "System volume"),
+            new(Channel.Game, "Game"), new(Channel.Focused, "Currently Focused") };
+        object[] available = [.. specials, .. link.State.Apps
             .Concat(config.Channels.Select(channel => channel.Processes))
-            .Where(name => name.Length > 0 && name != Channel.SystemVolume)
+            .Where(name => name.Length > 0 && !name.StartsWith('@'))
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
+        var games = new SortedSet<string>(config.RegisteredGames, StringComparer.OrdinalIgnoreCase);
         grid.CellPaint += (_, e) =>
         {
             if (e.Row is < 2 or > 6) return;
@@ -598,8 +606,9 @@ internal sealed partial class MixerForm : Form
             int index = i;
             grid.RowStyles.Add(new(SizeType.Absolute, 40));
             grid.Controls.Add(Caption((i + 1).ToString(), 10), 0, i + 2);
-            var target = new PickerField(palette, available, -1, editable: true);
-            target.SetValue(config.Channels[i].Processes == Channel.SystemVolume ? master : config.Channels[i].Processes);
+            int selected = Array.FindIndex(specials, option => option.Id == config.Channels[i].Processes);
+            var target = new PickerField(palette, available, selected, editable: true);
+            if (selected < 0) target.SetValue(config.Channels[i].Processes);
             target.AccessibleName = $"Knob {i + 1} app";
             targets[i] = target;
             var name = Entry(config.Channels[i].Label, $"Knob {i + 1} display name");
@@ -609,7 +618,7 @@ internal sealed partial class MixerForm : Form
             target.Dock = DockStyle.None;
             names[i] = name;
             target.Committed += (_, _) =>
-                names[index].Editor.Text = SuggestedName(target.Value, master);
+                names[index].Editor.Text = SuggestedName(target.Value, specials[0].Title);
             grid.Controls.Add(target, 1, i + 2);
             grid.Controls.Add(name, 2, i + 2);
         }
@@ -631,6 +640,7 @@ internal sealed partial class MixerForm : Form
         cancel.DialogResult = DialogResult.Cancel;
         buttons.Controls.Add(save);
         buttons.Controls.Add(cancel);
+        buttons.Controls.Add(ActionButton("Recognized games…", () => EditRecognizedGames(dialog, games), 158));
         grid.Controls.Add(buttons, 0, 8);
         grid.SetColumnSpan(buttons, 3);
         dialog.Controls.Add(grid);
@@ -639,15 +649,63 @@ internal sealed partial class MixerForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         Persist(config with
         {
+            RegisteredGames = [.. games],
             Channels = targets.Select((target, index) =>
             {
                 string app = target.Value.Trim();
                 string label = names[index].Editor.Text.Trim();
-                return new Channel(label.Length == 0 ? $"Knob {index + 1}" : label,
-                    app.Equals(master, StringComparison.OrdinalIgnoreCase) ? Channel.SystemVolume : app);
+                if (target.SelectedItem is SpecialMapping special && app == special.Title) app = special.Id;
+                else if (app.Equals(specials[0].Title, StringComparison.OrdinalIgnoreCase)) app = Channel.SystemVolume;
+                return new Channel(label.Length == 0 ? $"Knob {index + 1}" : label, app);
             }).ToArray()
         });
         UpdateView();
+    }
+
+    private void EditRecognizedGames(Form owner, SortedSet<string> games)
+    {
+        using var dialog = new Form
+        {
+            Text = "Recognized games", StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new(510, 275), MinimumSize = new(420, 245), ShowInTaskbar = false,
+            BackColor = palette.Background, ForeColor = palette.Text, Font = Font, AutoScaleMode = AutoScaleMode.Dpi
+        };
+        dialog.HandleCreated += (_, _) => SetTitleBar(dialog.Handle, palette.Dark);
+        var layout = Grid(1, 3);
+        layout.Padding = new(16);
+        layout.RowStyles.Add(new(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new(SizeType.Percent, 100));
+        layout.RowStyles.Add(new(SizeType.Absolute, 48));
+        layout.Controls.Add(Caption("Add the game executable that owns its audio session.", 10), 0, 0);
+        var list = new ListBox { Dock = DockStyle.Fill, BackColor = palette.Field, ForeColor = palette.Text,
+            BorderStyle = BorderStyle.FixedSingle, HorizontalScrollbar = true, IntegralHeight = false,
+            AccessibleName = "Registered game executable paths" };
+        list.Items.AddRange(games.Cast<object>().ToArray());
+        layout.Controls.Add(list, 0, 1);
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new(0, 6, 0, 0) };
+        actions.Controls.Add(ActionButton("Add game…", () =>
+        {
+            using var file = new OpenFileDialog { Filter = "Game executable (*.exe)|*.exe", CheckFileExists = true };
+            if (file.ShowDialog(dialog) != DialogResult.OK) return;
+            if (AudioApplication.SharedHost(file.FileName))
+            {
+                MessageBox.Show(dialog, "This runtime can host several applications. Choose a game-specific executable. " +
+                    "Voltra recognizes Minecraft Java when its game window is focused.", "Recognized games");
+                return;
+            }
+            if (games.Add(file.FileName)) list.Items.Add(file.FileName);
+        }, 112));
+        actions.Controls.Add(ActionButton("Remove", () =>
+        {
+            if (list.SelectedItem is string path) { games.Remove(path); list.Items.Remove(path); }
+        }, 88));
+        var done = ActionButton("Done", () => dialog.Close(), 80);
+        actions.Controls.Add(done);
+        layout.Controls.Add(actions, 0, 2);
+        dialog.Controls.Add(layout);
+        dialog.AcceptButton = done;
+        dialog.CancelButton = done;
+        dialog.ShowDialog(owner);
     }
 
     private string SuggestedName(string app, string master)
@@ -811,11 +869,12 @@ internal sealed partial class MixerForm : Form
 
         int active = connected && state.MovedChannel is >= 0 and < 5 && now - state.LastMovement < 3000
             ? state.MovedChannel : -1;
-        preview?.ShowFrame(idle, active < 0 ? null : config.Channels[active].Label,
+        preview?.ShowFrame(idle, active < 0 ? null : state.TargetNames?[active] ?? config.Channels[active].Label,
             active < 0 ? 0 : state.Levels[active]);
         for (int i = 0; i < meters.Length; i++)
             meters[i].Set(config.Channels[i].Label, state.WindowsLevels?[i], active == i,
-                connected && state.WaitingForKnob?[i] == true ? state.Levels[i] : null);
+                connected && state.WaitingForKnob?[i] == true ? state.Levels[i] : null,
+                config.Channels[i].Dynamic ? state.TargetNames?[i] ?? config.Channels[i].Inactive : null);
     }
 
     private void SetupTray()
@@ -887,6 +946,8 @@ internal sealed partial class MixerForm : Form
         lifetime.Dispose();
         tray.Dispose();
         trayMenu.Dispose();
+        Icon = null;
+        brandIcon.Dispose();
         base.OnFormClosed(e);
     }
 

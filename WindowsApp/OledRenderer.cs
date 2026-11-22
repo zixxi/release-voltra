@@ -87,11 +87,13 @@ internal sealed class OledRenderer : IDisposable
         OledText text = default;
         bool drawMedia = config.Page == OledPage.Media && media is not null;
         int?[] values = config.Page == OledPage.Mixer ? state.WindowsLevels ?? new int?[5] : [];
+        string[] labels = config.Page == OledPage.Mixer
+            ? config.Channels.Select((ch, i) => ch.Dynamic ? state.TargetNames?[i] ?? ch.Label : ch.Label).ToArray() : [];
         int separators = config.Page == OledPage.Mixer ? SeparatorGaps(config) : 0;
         switch (config.Page)
         {
             case OledPage.Mixer:
-                key = "m:" + string.Join("|", config.Channels.Select(channel => channel.Label)) +
+                key = "m:" + string.Join("|", labels) +
                     ":" + string.Join(",", values) + ":" + separators;
                 break;
             case OledPage.Clock:
@@ -127,7 +129,7 @@ internal sealed class OledRenderer : IDisposable
         if (lastKey == key && lastFrame is not null) return lastFrame;
         if (config.Page == OledPage.Mixer)
         {
-            lastFrame = OledFrame.Mixer(config.Channels.Select(channel => channel.Label).ToArray(), values, separators);
+            lastFrame = OledFrame.Mixer(labels, values, separators);
             lastKey = key;
             return lastFrame;
         }

@@ -9,7 +9,7 @@ internal enum ConnectionState { Disconnected, Connecting, Connected, Error }
 internal sealed record MixerState(string Status, string DisplayStatus, int[] Levels, string[] Apps,
     int MovedChannel = -1, long LastMovement = 0, string? ConnectedPort = null,
     ConnectionState Connection = ConnectionState.Disconnected,
-    int?[]? WindowsLevels = null, bool[]? WaitingForKnob = null, DeviceFirmware? Firmware = null);
+    int?[]? WindowsLevels = null, bool[]? WaitingForKnob = null, DeviceFirmware? Firmware = null, string?[]? TargetNames = null);
 
 internal sealed class DeviceLink : IDisposable
 {
@@ -81,7 +81,7 @@ internal sealed class DeviceLink : IDisposable
         {
             var serial = Volatile.Read(ref state);
             var windows = audio.Snapshot;
-            return serial with { Apps = windows.Apps, WindowsLevels = windows.Levels, WaitingForKnob = windows.Waiting };
+            return serial with { Apps = windows.Apps, TargetNames = windows.Names, WindowsLevels = windows.Levels, WaitingForKnob = windows.Waiting };
         }
     }
 
@@ -123,6 +123,7 @@ internal sealed class DeviceLink : IDisposable
         long ackDeadline = 0;
         string[] sentLabels = [];
         MixerSettings? labelsFor = null;
+        string?[]? targetNamesFor = null;
         string desiredPort = "";
         string connectionMode = "";
         int requestedScan = -1, probeIndex = 0, validPackets = 0;
@@ -311,16 +312,18 @@ internal sealed class DeviceLink : IDisposable
                             throw new IOException("No mixer data received.");
                         if (connected && !ready && display == "OLED waiting" && now - openedAt >= 6500)
                             display = "OLED handshake missing · upload the included sketch";
-                        if (ready && !ReferenceEquals(labelsFor, config))
+                        var targetNames = audio.Snapshot.Names;
+                        if (ready && (!ReferenceEquals(labelsFor, config) || !ReferenceEquals(targetNamesFor, targetNames)))
                         {
-                            var labels = config.Channels.Select(channel =>
-                                OledRenderer.Ascii(channel.Label, 18)).ToArray();
+                            var labels = config.Channels.Select((channel, i) =>
+                                OledRenderer.Ascii(channel.Dynamic ? targetNames[i] ?? channel.Label : channel.Label, 18)).ToArray();
                             if (!sentLabels.AsSpan().SequenceEqual(labels))
                             {
                                 for (int i = 0; i < labels.Length; i++) serial.WriteLine($"@L{i + 1},{labels[i]}");
                                 sentLabels = labels;
                             }
                             labelsFor = config;
+                            targetNamesFor = targetNames;
                         }
                         var displayFrame = Volatile.Read(ref frame);
                         if (ready && standaloneOled && displayFrame is not null)

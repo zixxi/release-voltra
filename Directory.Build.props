@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <VoltraVersion>0.9.4</VoltraVersion>
+    <VoltraVersion>0.9.5</VoltraVersion>
     <_VoltraLinuxProjectPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'LinuxApp', 'LinuxApp.csproj'))</_VoltraLinuxProjectPath>
     <_VoltraWindowsProjectPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'WindowsApp', 'Voltra.csproj'))</_VoltraWindowsProjectPath>
   </PropertyGroup>
