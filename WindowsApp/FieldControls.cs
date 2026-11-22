@@ -291,6 +291,39 @@ internal static class FieldChrome
         (int)(start.B + (end.B - start.B) * amount));
 }
 
+// Allocate the visible interior to the buttons. Their preferred height must
+// never enlarge a segment beyond the track.
+internal sealed class SegmentedButtonRow : Panel
+{
+    private readonly ThemePalette theme;
+    internal SegmentedButtonRow(ThemePalette theme, int width)
+    {
+        this.theme = theme;
+        Size = new(width, UiMetrics.FieldHeight);
+        Margin = new(0, 2, 0, 2);
+        Padding = new(3);
+        BackColor = theme.Field;
+        AccessibleRole = AccessibleRole.Grouping;
+        DoubleBuffered = ResizeRedraw = true;
+    }
+
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        base.OnLayout(e);
+        var area = DisplayRectangle;
+        int count = Controls.Count;
+        for (int i = 0; i < count; i++)
+        {
+            int left = area.Left + i * area.Width / count;
+            int right = area.Left + (i + 1) * area.Width / count;
+            Controls[i].Bounds = Rectangle.FromLTRB(left, area.Top, right, area.Bottom);
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e) =>
+        FieldChrome.Draw(e.Graphics, ClientRectangle, theme.Background, theme.Field, theme.Line);
+}
+
 internal sealed class MixerButton : Button
 {
     private ThemePalette theme;
@@ -340,7 +373,8 @@ internal sealed class MixerButton : Button
         Color fill = Enabled ? FieldChrome.Blend(resting, interactive, feedback.Value) : theme.Background;
         Color? outline = focused || (selected && !Navigation && !Segment) ? theme.Accent
             : Navigation || Segment || Primary ? null : theme.Line;
-        FieldChrome.Draw(e.Graphics, ClientRectangle, Segment ? theme.Field : background, fill, outline, Segment ? 4 : UiMetrics.Radius);
+        FieldChrome.Draw(e.Graphics, ClientRectangle, Segment ? theme.Field : background, fill, outline,
+            LogicalToDeviceUnits(Segment ? 4 : UiMetrics.Radius));
         if (Swatch is Color color && Width > 12 && Height > 12)
         {
             using var brush = new SolidBrush(color);
@@ -353,6 +387,7 @@ internal sealed class MixerButton : Button
         var bounds = Navigation
             ? new Rectangle(Padding.Left, 0, Math.Max(0, Width - Padding.Horizontal), Height)
             : ClientRectangle;
+        if (string.IsNullOrEmpty(Text) || bounds.IsEmpty) return;
         Color foreground = Primary ? theme.AccentForeground : Navigation
             ? FieldChrome.Blend(theme.Muted, theme.Text, Math.Max(selection.Value, feedback.Value)) : theme.Text;
         TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Enabled ? foreground : theme.Muted,

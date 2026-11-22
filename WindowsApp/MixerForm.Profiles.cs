@@ -107,8 +107,6 @@ internal sealed partial class MixerForm
 
         var name = Entry("", "Profile name");
         name.Dock = DockStyle.Fill;
-        // EditField normally reserves 6 px on the right; keep its edges aligned
-        // with the two action-button rows immediately underneath.
         name.Margin = Padding.Empty;
         name.Editor.MaxLength = MappingProfiles<Channel>.MaxName;
         editor.Controls.Add(Caption("Profile name", 10), 0, 0);
@@ -148,12 +146,17 @@ internal sealed partial class MixerForm
                 using var stripe = new SolidBrush(palette.Accent);
                 e.Graphics.FillRectangle(stripe, e.Bounds.Left, e.Bounds.Top + 6, 3, e.Bounds.Height - 12);
             }
-            var nameRect = new Rectangle(e.Bounds.X + 13, e.Bounds.Y, e.Bounds.Width - 26, e.Bounds.Height);
+            int inset = profiles.LogicalToDeviceUnits(10);
+            int badge = isActive ? TextRenderer.MeasureText(e.Graphics, "Active", profiles.Font, Size.Empty,
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + inset : 0;
+            var nameRect = Rectangle.Inflate(e.Bounds, -inset, 0);
+            nameRect.Width = Math.Max(0, nameRect.Width - badge);
             TextRenderer.DrawText(e.Graphics, item.Name, profiles.Font, nameRect, palette.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding |
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
             if (isActive)
             {
-                var activeRect = new Rectangle(e.Bounds.Right - 59, e.Bounds.Y, 53, e.Bounds.Height);
+                var activeRect = new Rectangle(e.Bounds.Right - inset - badge, e.Bounds.Y, badge, e.Bounds.Height);
                 TextRenderer.DrawText(e.Graphics, "Active", profiles.Font, activeRect, secondaryText,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
@@ -204,26 +207,29 @@ internal sealed partial class MixerForm
             if (ConfirmProfileDeletion(dialog, selected.Name))
                 Apply(() => store.Delete(selected.Id));
         }, 96);
-        // Use equal-width cells, rather than an auto-sized FlowLayoutPanel.
-        // The shared MixerButton draws action text centered already.
-        TableLayoutPanel ActionPair(MixerButton first, MixerButton second)
+        // One grid aligns both rows to the input edges. The gutter scales as
+        // one column rather than independently rounded margins on each button.
+        var actions = Grid(3, 2);
+        actions.ColumnStyles.Add(new(SizeType.Percent, 50));
+        actions.ColumnStyles.Add(new(SizeType.Absolute, 10));
+        actions.ColumnStyles.Add(new(SizeType.Percent, 50));
+        actions.RowStyles.Add(new(SizeType.Percent, 50));
+        actions.RowStyles.Add(new(SizeType.Percent, 50));
+        actions.SizeChanged += (_, _) =>
         {
-            var pair = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty
-            };
-            pair.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            pair.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            pair.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            first.Dock = second.Dock = DockStyle.Fill;
-            first.Margin = new Padding(0, 2, 5, 3);
-            second.Margin = new Padding(5, 2, 0, 3);
-            pair.Controls.Add(first, 0, 0);
-            pair.Controls.Add(second, 1, 0);
-            return pair;
+            int gap = actions.LogicalToDeviceUnits(10);
+            // Let the gutter absorb an odd pixel so all four buttons stay equal.
+            actions.ColumnStyles[1].Width = gap + ((actions.ClientSize.Width - gap) & 1);
+        };
+        MixerButton[] commands = [create, duplicate, rename, delete];
+        for (int i = 0; i < commands.Length; i++)
+        {
+            commands[i].Dock = DockStyle.Fill;
+            commands[i].Margin = new Padding(0, 3, 0, 3);
+            actions.Controls.Add(commands[i], (i % 2) * 2, i / 2);
         }
-        editor.Controls.Add(ActionPair(create, duplicate), 0, 2);
-        editor.Controls.Add(ActionPair(rename, delete), 0, 3);
+        editor.Controls.Add(actions, 0, 2);
+        editor.SetRowSpan(actions, 2);
         editor.Controls.Add(error, 0, 4);
 
         var footer = new FlowLayoutPanel
@@ -231,6 +237,7 @@ internal sealed partial class MixerForm
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
+            Margin = Padding.Empty,
             Padding = new Padding(0, 7, 0, 0)
         };
         root.Controls.Add(footer, 0, 2);

@@ -249,39 +249,7 @@ internal sealed partial class MixerForm : Form
         sidebar.RowStyles.Add(new(SizeType.Absolute, 38));
         sidebar.Controls.Add(Divider(), 0, 4);
         sidebar.Controls.Add(Caption("ACTIVE PROFILE", 9, muted: true), 0, 5);
-        var profileMenu = new ContextMenuStrip
-        {
-            ShowImageMargin = false,
-            ShowCheckMargin = false,
-            DropShadowEnabled = false,
-            BackColor = palette.Field,
-            ForeColor = palette.Text,
-            Padding = new Padding(4),
-            AutoSize = false,
-            Renderer = new VoltraConsistentProfileMenuRenderer(palette)
-        };
-        profileMenu.Opened += (_, _) =>
-        {
-            const int radius = 9;
-
-            int w = profileMenu.Width;
-            int h = profileMenu.Height;
-
-            if (w <= radius * 2 || h <= radius * 2)
-                return;
-
-            using var path = new System.Drawing.Drawing2D.GraphicsPath();
-
-            path.AddArc(0, 0, radius * 2, radius * 2, 180, 90);
-            path.AddArc(w - radius * 2, 0, radius * 2, radius * 2, 270, 90);
-            path.AddArc(w - radius * 2, h - radius * 2, radius * 2, radius * 2, 0, 90);
-            path.AddArc(0, h - radius * 2, radius * 2, radius * 2, 90, 90);
-            path.CloseFigure();
-
-            var previousRegion = profileMenu.Region;
-            profileMenu.Region = new Region(path);
-            previousRegion?.Dispose();
-        };
+        var profileMenu = new SidebarProfileMenu(palette);
         sidebar.Disposed += (_, _) => profileMenu.Dispose();
         SidebarProfilePicker? profileButton = null;
         bool suppressNextProfileClick = false;
@@ -314,8 +282,6 @@ internal sealed partial class MixerForm : Form
                 profileMenu.Close();
                 return;
             }
-            // Keep the popup aligned to the picker, without WinForms auto-expanding it.
-            profileMenu.Width = profileButton.Width;
             while (profileMenu.Items.Count > 0)
             {
                 var oldItem = profileMenu.Items[0];
@@ -328,11 +294,7 @@ internal sealed partial class MixerForm : Form
                 bool active = selectedProfile.Id == config.Profiles.ActiveId;
                 var item = new ToolStripMenuItem(selectedProfile.Name.Replace("&", "&&"))
                 {
-                    
-                    ForeColor = active ? palette.Accent : palette.Text,
-                    AutoSize = false,
-                    Width = Math.Max(1, profileButton.Width - profileMenu.Padding.Horizontal - 2),
-                    Height = 32
+                    ForeColor = active ? palette.Accent : palette.Text
                 };
                 item.Click += (_, _) =>
                 {
@@ -343,24 +305,15 @@ internal sealed partial class MixerForm : Form
                 profileMenu.Items.Add(item);
             }
             profileMenu.Items.Add(new ToolStripSeparator());
-            var manage = new ToolStripMenuItem("Manage profiles...")
-            {
-                ForeColor = palette.Text,
-                AutoSize = false,
-                Width = Math.Max(1, profileButton.Width - profileMenu.Padding.Horizontal - 2),
-                Height = 32
-            };
+            var manage = new ToolStripMenuItem("Manage profiles...") { ForeColor = palette.Text };
             manage.Click += (_, _) =>
             {
                 ManageProfiles();
                 RefreshProfileLabel();
             };
             profileMenu.Items.Add(manage);
-            // Fixed menu width; calculate height after populating its entries.
-            profileMenu.Height = profileMenu.Padding.Vertical + profileMenu.Items.Cast<ToolStripItem>()
-                .Sum(item => item.Height) + 2;
             suppressNextProfileClick = false;
-            profileMenu.Show(profileButton, new Point(0, profileButton.Height + 4));
+            profileMenu.ShowFor(profileButton);
         };
         profileButton.Dock = DockStyle.Fill;
         profileButton.Margin = new(0, 2, 0, 2);
@@ -1285,20 +1238,11 @@ internal sealed partial class MixerForm : Form
 
     private Control Segments(string[] labels, int selected, Action<int> changed, int width)
     {
-        var group = new Panel
-        {
-            Size = new(width, UiMetrics.FieldHeight), Padding = new(3), Margin = new(0, 2, 0, 2),
-            BackColor = palette.Field, AccessibleRole = AccessibleRole.Grouping
-        };
-        group.Paint += (_, e) => FieldChrome.Draw(e.Graphics, group.ClientRectangle, palette.Background,
-            palette.Field, palette.Line);
-        var row = Grid(labels.Length, 1);
-        row.BackColor = palette.Field;
+        var group = new SegmentedButtonRow(palette, width);
         var buttons = new MixerButton[labels.Length];
         for (int i = 0; i < labels.Length; i++)
         {
             int index = i;
-            row.ColumnStyles.Add(new(SizeType.Percent, 100f / labels.Length));
             var button = ActionButton(labels[i], () =>
             {
                 for (int k = 0; k < buttons.Length; k++) buttons[k].SetSelected(k == index);
@@ -1306,7 +1250,6 @@ internal sealed partial class MixerForm : Form
             }, selected: i == selected);
             button.BackColor = palette.Field;
             button.Segment = true;
-            button.Dock = DockStyle.Fill;
             button.Margin = new(0);
             button.PreviewKeyDown += (_, e) =>
             {
@@ -1322,9 +1265,8 @@ internal sealed partial class MixerForm : Form
                 e.SuppressKeyPress = true;
             };
             buttons[i] = button;
-            row.Controls.Add(button, i, 0);
+            group.Controls.Add(button);
         }
-        group.Controls.Add(row);
         return group;
     }
 
