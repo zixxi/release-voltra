@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -20,12 +22,17 @@ public sealed partial class MainWindow : Window
     private int[]? previousLevels;
     private long lastMove;
     private int activeChannel = -1;
+    private int currentPage;
+    private bool reducedMotion = true;
+    private CancellationTokenSource? pageAnimation;
 
     public MainWindow() => InitializeComponent();
 
     internal MainWindow(MainViewModel model) : this()
     {
         this.model = model;
+        SizeChanged += (_, e) => PageContent.Margin = e.NewSize.Width < 800
+            ? new Thickness(16, 10, 14, 10) : new Thickness(26, 16, 24, 16);
         Dashboard.Setup(model, preview, () => Navigate(1));
         Oled.Setup(model, preview);
         Preferences.Setup(model);
@@ -35,11 +42,30 @@ public sealed partial class MainWindow : Window
         Refresh();
         refresh.Tick += (_, _) => { if (IsVisible) Refresh(); };
         refresh.Start();
-        Closed += (_, _) => { refresh.Stop(); preview.Dispose(); };
+        Opened += async (_, _) =>
+        {
+            reducedMotion = await InterfaceMotion.IsReducedAsync();
+            if (reducedMotion) return;
+            Classes.Add("motion");
+            foreach (var button in new[] { DashboardButton, OledButton, SettingsButton })
+                button.Classes.Add("motion");
+            if (NavMarker.RenderTransform is TranslateTransform indicator)
+                indicator.Transitions = [new DoubleTransition
+                {
+                    Property = TranslateTransform.YProperty, Duration = TimeSpan.FromMilliseconds(185), Easing = new CubicEaseOut()
+                }];
+        };
+        Closed += (_, _) => { refresh.Stop(); pageAnimation?.Cancel(); preview.Dispose(); };
     }
 
-    private void Navigate(int page)
+    internal bool ReducedMotion => reducedMotion;
+
+    private async void Navigate(int page)
     {
+        if (currentPage == page) return;
+        bool forward = page > currentPage;
+        currentPage = page;
+        pageAnimation?.Cancel();
         Dashboard.IsVisible = page == 0;
         Oled.IsVisible = page == 1;
         Preferences.IsVisible = page == 2;
@@ -47,9 +73,22 @@ public sealed partial class MainWindow : Window
         OledButton.Classes.Set("selected", page == 1);
         SettingsButton.Classes.Set("selected", page == 2);
         PageHeading.Text = page switch { 1 => "OLED", 2 => "Settings", _ => "Dashboard" };
-        NavMarker.Margin = new Thickness(1, 6 + page * 44, 0, 0);
+        if (NavMarker.RenderTransform is TranslateTransform indicator)
+            indicator.Y = (page switch { 1 => OledButton, 2 => SettingsButton, _ => DashboardButton }).Bounds.Y;
         PageScroll.Offset = default;
         Refresh();
+        if (reducedMotion || PageContent.RenderTransform is not TranslateTransform movement) return;
+
+        using var animation = new CancellationTokenSource();
+        pageAnimation = animation;
+        try
+        {
+            await InterfaceMotion.PlayAsync(PageContent, movement, .74, 1, forward ? 9 : -9, 0, 185, animation.Token);
+        }
+        finally
+        {
+            if (ReferenceEquals(pageAnimation, animation)) pageAnimation = null;
+        }
     }
 
     private void Refresh()
@@ -61,7 +100,7 @@ public sealed partial class MainWindow : Window
 
         var (label, color) = device.Connection switch
         {
-            ControllerConnection.Connecting => ("Connecting", "Pending"),
+            ControllerConnection.Connecting => ("Connecting…", "Pending"),
             ControllerConnection.Connected => ("Connected", "Online"),
             ControllerConnection.Error => ("Connection error", "Error"),
             _ => ("Disconnected", "Muted")
@@ -69,14 +108,23 @@ public sealed partial class MainWindow : Window
         ConnectionTitle.Text = label;
         if (Application.Current!.TryGetResource(color, ActualThemeVariant, out var value) && value is IBrush brush)
         {
-            ConnectionDot.Fill = device.Connection == ControllerConnection.Disconnected ? Brushes.Transparent : brush;
-            ConnectionDot.Stroke = brush;
+            ConnectionDot.Fill = brush;
             ConnectionTitle.Foreground = brush;
         }
-        ConnectionDetail.Text = device.Port ?? device.Status;
-        AudioStatus.Text = audio.Status;
-        ToolTip.SetTip(ConnectionDetail, device.Status);
-        ToolTip.SetTip(AudioStatus, audio.Status);
+        ConnectionDetail.Text = device.Connection switch
+        {
+            ControllerConnection.Connected => "ESP32-S3-Zero",
+            ControllerConnection.Connecting => "Searching for controller",
+            ControllerConnection.Error => "See device settings",
+            _ => "Connect Voltra device"
+        };
+        AudioStatus.Text = audio.Status switch
+        {
+            "PipeWire connected" => "Audio ready",
+            "Connecting to PipeWire…" => "Audio starting…",
+            _ => "PipeWire unavailable"
+        };
+        ToolTip.SetTip(ConnectionStatus, device.Port is { } path ? $"{path}\n{audio.Status}" : $"{device.Status}\n{audio.Status}");
         var frame = model.Oled.Snapshot;
         if (Dashboard.IsVisible) Dashboard.Refresh(config, device, audio, activeChannel);
         if (Oled.IsVisible) Oled.Refresh(config, device, frame);

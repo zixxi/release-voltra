@@ -10,16 +10,30 @@ public sealed partial class SettingsView : UserControl
 {
     private MainViewModel? model;
     private string[] ports = [];
-    private string? lastAutoPort;
+    private string? lastAutoPort, lastManualPort;
     private bool refreshingPorts, writingStartup, gesture;
     private readonly CancellationTokenSource checks = new();
     private LinuxRelease? available;
+    private FirmwareRelease? firmware;
+    private bool firmwareChecking;
+    private DateTimeOffset nextFirmwareCheck;
+    private string firmwareMessage = "";
 
     public SettingsView() => InitializeComponent();
 
     internal void Setup(MainViewModel model)
     {
         this.model = model;
+        FirmwareCheck.Click += async (_, _) => await CheckFirmwareAsync();
+        FirmwareInstall.Click += async (_, _) =>
+        {
+            var snapshot = model.Device.Snapshot;
+            if (model.FirmwareDialogOpen || firmware is null || snapshot.Identity is not { } device ||
+                snapshot.UsbSocket is null || !firmware.CanInstall(device) || TopLevel.GetTopLevel(this) is not Window parent) return;
+            model.FirmwareDialogOpen = true;
+            try { await new FirmwareWindow(model, snapshot, firmware).ShowDialog(parent); }
+            finally { model.FirmwareDialogOpen = false; RefreshFirmware(model.Device.Snapshot); }
+        };
         var config = model.Settings;
         StartupToggle.IsChecked = config.Startup;
         ThemeDark.IsChecked = config.Theme == "Dark";
@@ -130,8 +144,17 @@ public sealed partial class SettingsView : UserControl
         PortMenu.SelectionChanged += (_, _) =>
         {
             int index = PortMenu.SelectedIndex;
-            if (!refreshingPorts && index >= 0 && index <= ports.Length)
-                model.Change(model.Settings with { Port = index == 0 ? "" : ports[index - 1] });
+            if (refreshingPorts || index < 0 || index > ports.Length) return;
+            var current = model.Settings;
+            model.Change(index == 0 ? current with { AutoDetect = true } :
+                current with { AutoDetect = false, Port = ports[index - 1] });
+        };
+        CopySerialDiagnostics.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+            try { await clipboard.SetTextAsync(model.Device.Diagnostics); }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            { model.Report("Could not copy serial diagnostics."); }
         };
         CheckUpdates.Click += async (_, _) => await CheckAsync();
         OpenRelease.Click += async (_, _) =>
@@ -196,20 +219,68 @@ public sealed partial class SettingsView : UserControl
     internal void Refresh(DeviceSnapshot device)
     {
         if (model is null) return;
+        RefreshFirmware(device);
         DeviceStatus.Text = device.Status;
         if (device.Firmware is { } firmware) DeviceStatus.Text += $" · Firmware {firmware}";
-        var requested = model.Settings.Port;
-        string[] current = requested.Length == 0 || device.Ports.Contains(requested)
+        if (device.Port is { } connectedPath) DeviceStatus.Text += Environment.NewLine + connectedPath;
+        string? requested = model.Settings.ManualPort;
+        string[] current = string.IsNullOrEmpty(requested) || device.Ports.Contains(requested)
             ? device.Ports : [.. device.Ports, requested];
-        string? automaticPort = requested.Length == 0 ? device.Port : null;
+        string? automaticPort = requested is null ? device.Port : null;
         if (PortMenu.IsDropDownOpen ||
-            (lastAutoPort == automaticPort && ports.AsSpan().SequenceEqual(current) && PortMenu.ItemsSource is not null)) return;
+            (lastAutoPort == automaticPort && lastManualPort == requested &&
+                ports.AsSpan().SequenceEqual(current) && PortMenu.ItemsSource is not null)) return;
         lastAutoPort = automaticPort;
+        lastManualPort = requested;
         ports = current;
         refreshingPorts = true;
-        PortMenu.ItemsSource = new[] { automaticPort is not null ? $"Auto · {System.IO.Path.GetFileName(automaticPort)}" : "Auto" }.Concat(ports).ToArray();
-        PortMenu.SelectedIndex = requested.Length == 0 ? 0 : Array.IndexOf(ports, requested) + 1;
+        PortMenu.ItemsSource = new[] { automaticPort is not null ? "Automatic · connected" : "Automatic" }.Concat(ports).ToArray();
+        int manualIndex = Array.IndexOf(ports, requested);
+        PortMenu.SelectedIndex = requested is null ? 0 : manualIndex < 0 ? -1 : manualIndex + 1;
         refreshingPorts = false;
+    }
+
+    private void RefreshFirmware(DeviceSnapshot snapshot)
+    {
+        if (model is null || model.FirmwareDialogOpen) return;
+        model.Firmware.ObserveReconnection(snapshot);
+        var device = snapshot.Identity;
+        bool compatible = device is not null && FirmwareRelease.Supports(device) && snapshot.UsbSocket is not null;
+        FirmwareVersions.Text = $"ESP32-S3-Zero   ·   Installed {device?.Version.ToString() ?? "—"}   ·   Available {firmware?.Version.ToString() ?? "—"}";
+        FirmwareInstall.IsVisible = !firmwareChecking && compatible && firmware?.CanInstall(device!) == true;
+        FirmwareCheck.IsEnabled = !firmwareChecking;
+        string status = firmwareMessage.Length > 0 ? firmwareMessage :
+            !compatible ? "Connect a supported controller using its native USB port." :
+            firmware is null ? "Check for signed firmware." :
+            firmware.MinimumAppVersion > LinuxUpdateService.Version ? $"Requires Voltra {firmware.MinimumAppVersion} or newer." :
+            firmware.CanInstall(device!) ? "A verified update is available." : "Controller firmware is up to date.";
+        FirmwareStatus.Text = model.Firmware.NeedsConfirmation
+            ? "A previous write has no confirmed result. Tap RESET with BOOT released and check the installed version. " + status
+            : status;
+        if (!firmwareChecking && compatible && DateTimeOffset.UtcNow >= nextFirmwareCheck) _ = CheckFirmwareAsync();
+    }
+
+    private async Task CheckFirmwareAsync()
+    {
+        if (model is null || firmwareChecking || model.FirmwareDialogOpen) return;
+        firmwareChecking = true;
+        nextFirmwareCheck = DateTimeOffset.UtcNow.AddHours(6);
+        firmware = null;
+        firmwareMessage = "Checking the firmware release…";
+        RefreshFirmware(model.Device.Snapshot);
+        var verifying = new Progress<bool>(_ => { if (firmwareChecking) firmwareMessage = "Verifying the manifest signature…"; });
+        try
+        {
+            firmware = await model.Firmware.CheckAsync(checks.Token, () => ((IProgress<bool>)verifying).Report(true));
+            firmwareMessage = "";
+        }
+        catch (OperationCanceledException) when (checks.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            firmwareMessage = $"Firmware check failed. {ex.Message}";
+            nextFirmwareCheck = DateTimeOffset.UtcNow.AddMinutes(10);
+        }
+        finally { firmwareChecking = false; RefreshFirmware(model.Device.Snapshot); }
     }
 
     private async Task CheckAsync()

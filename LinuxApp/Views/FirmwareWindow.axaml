@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Voltra.Linux.Views.FirmwareWindow" Title="Device firmware" Width="484" Height="308"
+        MinWidth="360" MinHeight="260" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Grid Margin="20,16" RowDefinitions="*,Auto" RowSpacing="12">
+    <ScrollViewer>
+      <StackPanel Spacing="8">
+        <TextBlock Name="Heading" Text="Firmware update available" FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock Name="Controller" />
+        <TextBlock Name="Versions" Classes="muted" />
+        <Border Classes="rule" Margin="0,3" />
+        <TextBlock Name="NotesHeading" Text="Release notes" FontWeight="SemiBold" />
+        <ScrollViewer Name="NotesPanel" MaxHeight="65"><TextBlock Name="Notes" TextWrapping="Wrap" /></ScrollViewer>
+        <TextBlock Name="Stage" TextWrapping="Wrap" />
+        <ProgressBar Name="Progress" Height="5" IsVisible="False" Maximum="100" Foreground="{DynamicResource VoltraAccent}" />
+        <TextBlock Name="Details" Classes="muted" TextWrapping="Wrap" IsVisible="False" />
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="1" Spacing="10">
+      <Border Classes="rule" />
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Name="Dismiss" Content="Cancel" MinWidth="76" />
+        <Button Name="Continue" Classes="action" Content="Prepare update" MinWidth="125" />
+      </StackPanel>
+    </StackPanel>
+  </Grid>
+</Window>

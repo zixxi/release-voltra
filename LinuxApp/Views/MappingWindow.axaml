@@ -1,25 +1,97 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Voltra.Linux.Views.MappingWindow" Title="Edit mappings" Width="654" Height="440"
-        MinWidth="490" MinHeight="360" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
-  <Grid RowDefinitions="Auto,*,Auto" Margin="23">
-    <StackPanel Spacing="6" Margin="0,0,0,14">
+        x:Class="Voltra.Linux.Views.MappingWindow" Title="Edit mappings" Width="616" Height="369"
+        MinWidth="490" MinHeight="327" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Window.Resources>
+    <ControlTheme x:Key="MappingOption" TargetType="ComboBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Foreground" Value="{DynamicResource Text}" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="OptionBody" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Background="Transparent" CornerRadius="4" Padding="9,7" MinHeight="34"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="Center" />
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ ContentPresenter#OptionBody">
+        <Setter Property="Background" Value="{DynamicResource ControlHover}" />
+      </Style>
+      <Style Selector="^:focus-visible /template/ ContentPresenter#OptionBody">
+        <Setter Property="Background" Value="{DynamicResource ControlHover}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,6" />
+      </Style>
+      <Style Selector="^:selected /template/ ContentPresenter#OptionBody">
+        <Setter Property="Background" Value="{DynamicResource Selected}" />
+        <Setter Property="Foreground" Value="{DynamicResource VoltraAccent}" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="MappingTarget" TargetType="ComboBox">
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="FocusAdorner" Value="{x:Null}" />
+      <Setter Property="ItemContainerTheme" Value="{StaticResource MappingOption}" />
+      <Setter Property="ItemsPanel">
+        <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+      </Setter>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="TargetChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid ColumnDefinitions="*,25">
+              <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding ItemTemplate}"
+                                Margin="9,0,0,0" VerticalAlignment="Center" ClipToBounds="True" />
+              <Path Grid.Column="1" Data="M 0,0 L 4,4 L 8,0" Stroke="{DynamicResource Muted}" StrokeThickness="1.2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+              <Popup Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}" PlacementTarget="TargetChrome"
+                     Width="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}"
+                     MaxHeight="{TemplateBinding MaxDropDownHeight}" Placement="BottomEdgeAlignedLeft" VerticalOffset="4"
+                     WindowManagerAddShadowHint="False" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True">
+                <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                        CornerRadius="6" Padding="3" ClipToBounds="True">
+                  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#TargetChrome">
+        <Setter Property="Background" Value="{DynamicResource ControlHover}" />
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#TargetChrome">
+        <Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" />
+      </Style>
+      <Style Selector="^:dropdownopen /template/ Border#TargetChrome">
+        <Setter Property="BorderBrush" Value="{DynamicResource VoltraAccent}" />
+      </Style>
+    </ControlTheme>
+  </Window.Resources>
+  <Grid Name="DialogBody" RowDefinitions="Auto,*,Auto" Margin="20,17,20,16">
+    <Grid.RenderTransform><TranslateTransform /></Grid.RenderTransform>
+    <StackPanel Spacing="4" Margin="0,0,0,12">
       <TextBlock Text="Edit mappings" FontSize="23" FontWeight="SemiBold" />
-      <TextBlock Text="Assign an app and display name to each knob." Classes="muted" />
+      <TextBlock Text="Assign an application and display name to each knob." Classes="muted" />
     </StackPanel>
     <ScrollViewer Grid.Row="1">
       <StackPanel>
-        <Grid ColumnDefinitions="58,51*,49*" ColumnSpacing="9" Height="30">
-          <TextBlock Text="Knob" Classes="muted" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Text="App" Classes="muted" VerticalAlignment="Center" />
+        <Grid ColumnDefinitions="42,54*,46*" ColumnSpacing="10" Height="25">
+          <TextBlock Text="Knob" Classes="muted" VerticalAlignment="Center" HorizontalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="Application" Classes="muted" VerticalAlignment="Center" />
           <TextBlock Grid.Column="2" Text="Display name" Classes="muted" VerticalAlignment="Center" />
         </Grid>
-        <StackPanel Name="Rows" />
-        <Border Classes="rule" />
+        <StackPanel Name="Rows" Spacing="5" Margin="0,3" />
       </StackPanel>
     </ScrollViewer>
-    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
-      <Button Name="CancelMapping" Content="Cancel" Width="85" IsCancel="True" />
-      <Button Name="SaveMapping" Content="Save mappings" Classes="action" Width="130" IsDefault="True" />
+    <StackPanel Name="DialogFooter" Grid.Row="2" Spacing="12" Margin="0,8,0,0">
+      <Border Classes="rule" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Name="CancelMapping" Content="Cancel" Width="82" IsCancel="True" />
+        <Button Name="SaveMapping" Content="Save mappings" Classes="action" Width="129" IsDefault="True" />
+      </StackPanel>
     </StackPanel>
   </Grid>
 </Window>

@@ -18,6 +18,8 @@ internal sealed record Settings
     public string Theme { get; init; } = "Dark";
     public string Accent { get; init; } = DefaultAccent;
     public string Port { get; init; } = "";
+    public bool? AutoDetect { get; init; }
+    internal string? ManualPort => (AutoDetect ?? Port.Length == 0) ? null : Port;
     public string City { get; init; } = "";
     public string Media { get; init; } = "";
     public DisplayPage Page { get; init; }
@@ -63,6 +65,7 @@ internal static class LinuxSettingsService
                 }).ToArray(),
                 Theme = value.Theme is "Dark" or "Light" or "System" ? value.Theme : defaults.Theme,
                 Accent = TryAccent(value.Accent, out _) ? value.Accent : defaults.Accent,
+                AutoDetect = value.AutoDetect ?? string.IsNullOrEmpty(value.Port),
                 Port = value.Port ?? "", City = value.City ?? "", Media = value.Media ?? "",
                 Page = Enum.IsDefined(value.Page) ? value.Page : defaults.Page,
                 Separator = Enum.IsDefined(value.Separator) ? value.Separator : defaults.Separator,

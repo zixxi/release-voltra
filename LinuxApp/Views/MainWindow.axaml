@@ -1,42 +1,52 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.MainWindow"
-        Title="Voltra" Width="1100" Height="690" MinWidth="840" MinHeight="540"
+        Title="Voltra" Width="1100" Height="690" MinWidth="580" MinHeight="360"
         WindowStartupLocation="CenterScreen" Icon="avares://LinuxApp/Assets/Voltra.ico">
-  <Grid ColumnDefinitions="16*,84*">
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="16*" MinWidth="116" MaxWidth="176" />
+      <ColumnDefinition Width="84*" />
+    </Grid.ColumnDefinitions>
     <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
-      <Grid Margin="10,20,10,14" RowDefinitions="Auto,*,Auto">
+      <Grid Margin="8,16,8,12" RowDefinitions="Auto,*,Auto">
         <Grid>
           <StackPanel Spacing="4">
             <Button Name="DashboardButton" Classes="nav selected" Content="Dashboard" />
             <Button Name="OledButton" Classes="nav" Content="OLED" />
             <Button Name="SettingsButton" Classes="nav" Content="Settings" />
           </StackPanel>
-          <Border Name="NavMarker" Width="3" Height="28" Margin="1,6,0,0" CornerRadius="1.5"
+          <Border Name="NavMarker" Width="3" Height="24" Margin="1,5,0,0" CornerRadius="1.5"
                   Background="{DynamicResource VoltraAccent}" HorizontalAlignment="Left" VerticalAlignment="Top"
-                  IsHitTestVisible="False" />
+                  IsHitTestVisible="False">
+            <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+          </Border>
         </Grid>
-        <StackPanel Grid.Row="2" Margin="10,0,6,0" Spacing="4">
+        <StackPanel Name="ConnectionStatus" Grid.Row="2" Margin="4,0,3,2" Spacing="4" ClipToBounds="True">
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-            <Ellipse Name="ConnectionDot" Width="8" Height="8" StrokeThickness="1" VerticalAlignment="Center" />
-            <TextBlock Name="ConnectionTitle" Grid.Column="1" FontSize="14" TextWrapping="Wrap" />
+            <Ellipse Name="ConnectionDot" Width="7" Height="7" VerticalAlignment="Center" />
+            <TextBlock Name="ConnectionTitle" Grid.Column="1" FontSize="13" FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
           </Grid>
-          <TextBlock Name="ConnectionDetail" Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
-          <TextBlock Name="AudioStatus" Classes="muted" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+          <TextBlock Name="ConnectionDetail" Classes="muted" FontSize="{StaticResource StatusSize}" Margin="14,0,0,0"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock Name="AudioStatus" Classes="muted" FontSize="{StaticResource StatusSize}" Margin="14,0,0,0"
+                     TextTrimming="CharacterEllipsis" />
         </StackPanel>
       </Grid>
     </Border>
     <Grid Grid.Column="1" RowDefinitions="*,Auto">
-      <ScrollViewer Name="PageScroll">
-        <StackPanel Margin="36,22,40,22">
-          <Border Height="60" Padding="7,0,0,0">
-            <TextBlock Name="PageHeading" Text="Dashboard" FontSize="31" FontWeight="SemiBold" VerticalAlignment="Center" />
+      <ScrollViewer Name="PageScroll" ClipToBounds="True">
+        <Grid Name="PageContent" RowDefinitions="Auto,*" Margin="26,16,24,16">
+          <Grid.RenderTransform><TranslateTransform /></Grid.RenderTransform>
+          <Border Height="46" Padding="2,0,0,0">
+            <TextBlock Name="PageHeading" Text="Dashboard" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
           </Border>
-          <Grid>
+          <Grid Grid.Row="1">
             <views:DashboardView Name="Dashboard" />
             <views:OledView Name="Oled" IsVisible="False" />
             <views:SettingsView Name="Preferences" IsVisible="False" />
           </Grid>
-        </StackPanel>
+        </Grid>
       </ScrollViewer>
       <TextBlock Name="Notice" Grid.Row="1" Margin="32,0,26,12" Classes="error" TextWrapping="Wrap" IsVisible="False" />
     </Grid>

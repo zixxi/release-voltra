@@ -1,40 +1,40 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="using:Voltra.Linux.Views" x:Class="Voltra.Linux.Views.OledView">
-  <Grid ColumnDefinitions="49*,1,51*" MinHeight="530">
-    <StackPanel Margin="0,0,18,0">
+  <Grid ColumnDefinitions="49*,1,51*">
+    <StackPanel Margin="0,0,12,0">
       <views:OledPreview Name="Preview" />
-      <TextBlock Classes="muted" Margin="0,10,0,0" Text="Knob overlay: 3 seconds" />
+      <TextBlock Classes="muted" Margin="0,6,0,0" Text="Knob overlay: 3 seconds" />
     </StackPanel>
     <Border Grid.Column="1" Margin="0,4,0,9" Background="{DynamicResource Line}" />
-    <StackPanel Grid.Column="2" Margin="24,0,0,0" Spacing="9">
-      <TextBlock Text="Idle page" Classes="section" Height="29" />
+    <StackPanel Grid.Column="2" Margin="16,0,0,0" Spacing="5">
+      <TextBlock Text="Idle page" Classes="section" Height="28" />
       <StackPanel Name="PageChoices" />
       <Border Classes="rule" Margin="0,2" />
-      <Grid Name="ClockRow" ColumnDefinitions="108,*" IsVisible="False">
+      <WrapPanel Name="ClockRow" ItemSpacing="10" LineSpacing="4" IsVisible="False">
         <TextBlock Text="Clock format" VerticalAlignment="Center" />
-        <Border Grid.Column="1" Classes="segments" HorizontalAlignment="Left">
+        <Border Classes="segments" HorizontalAlignment="Left">
           <UniformGrid Columns="2" Width="161">
             <RadioButton Name="TwelveHour" Classes="segment" GroupName="ClockFormat" Content="12-hour" />
             <RadioButton Name="TwentyFourHour" Classes="segment" GroupName="ClockFormat" Content="24-hour" />
           </UniformGrid>
         </Border>
-      </Grid>
-      <StackPanel Name="WeatherRow" IsVisible="False" Spacing="8">
+      </WrapPanel>
+      <StackPanel Name="WeatherRow" IsVisible="False" Spacing="5">
         <TextBlock Text="City" />
-        <Grid ColumnDefinitions="1*,Auto" ColumnSpacing="8" MaxWidth="300" HorizontalAlignment="Left">
+        <Grid ColumnDefinitions="1*,Auto" ColumnSpacing="5" MaxWidth="300" HorizontalAlignment="Stretch">
           <TextBox Name="City" Watermark="City name" />
           <Button Grid.Column="1" Name="ApplyCity" Content="Set city" Width="80" />
         </Grid>
         <TextBlock Name="WeatherStatus" Classes="muted" TextWrapping="Wrap" />
         <Button Name="WeatherSource" Content="Weather by Open-Meteo" HorizontalAlignment="Left" />
       </StackPanel>
-      <StackPanel Name="MediaRow" IsVisible="False" Spacing="8">
+      <StackPanel Name="MediaRow" IsVisible="False" Spacing="5">
         <Button Name="ChooseMedia" Content="Choose image or GIF…" HorizontalAlignment="Left" />
         <TextBlock Name="MediaName" Classes="muted" TextWrapping="Wrap" />
       </StackPanel>
-      <StackPanel Name="SeparatorRow" Spacing="8">
+      <StackPanel Name="SeparatorRow" Spacing="5">
         <TextBlock Text="Mixer channel separator" />
-        <ComboBox Name="SeparatorMenu" Width="218" />
+        <ComboBox Name="SeparatorMenu" MaxWidth="208" HorizontalAlignment="Stretch" />
       </StackPanel>
     </StackPanel>
   </Grid>

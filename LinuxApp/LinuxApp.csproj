@@ -8,14 +8,33 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../WindowsApp/UpdateService.cs" Link="Services/SignedReleaseTransport.cs" />
+    <AssemblyMetadata Include="UpdatePublicKey" Value="$(VoltraUpdatePublicKey)" />
+    <AssemblyMetadata Include="UpdateRepository" Value="$(VoltraUpdateRepository)" />
+    <InternalsVisibleTo Include="Voltra.Linux.FirmwareTests" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <ProjectReference Include="../Voltra.Core/Voltra.Core.csproj" />
+    <InternalsVisibleTo Include="Voltra.Linux.SerialTests" />
     <AvaloniaResource Include="Assets/Fonts/*.ttf" />
     <EmbeddedResource Include="Assets/Fonts/selawkb.ttf" LogicalName="Voltra.SelawikBold.ttf" />
     <None Update="Assets/Fonts/Selawik-OFL.txt" TargetPath="Selawik-OFL.txt" CopyToPublishDirectory="PreserveNewest" />
     <AvaloniaResource Include="../WindowsApp/Voltra.ico" Link="Assets/Voltra.ico" />
     <None Include="../LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <PropertyGroup>
+    <FirmwareHelperDir>$(MSBuildProjectDirectory)/obj/firmware-helper</FirmwareHelperDir>
+    <FirmwareHelperHash Condition="Exists('$(FirmwareHelperDir)/helper.sha256')">$([System.IO.File]::ReadAllText('$(FirmwareHelperDir)/helper.sha256').Trim())</FirmwareHelperHash>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(FirmwareHelperDir)/helper.sha256') And Exists('$(FirmwareHelperDir)/VoltraFlasher')">
+    <AssemblyMetadata Include="LinuxFlasherSha256" Value="$(FirmwareHelperHash)" />
+    <None Include="$(FirmwareHelperDir)/notices/**/*" Link="tools/notices/%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(FirmwareHelperDir)/VoltraFlasher" Link="tools/VoltraFlasher" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+  <Target Name="RequireLinuxFirmwareHelper" BeforeTargets="PrepareForPublish" Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <Error Condition="!Exists('$(FirmwareHelperDir)/helper.sha256') Or !Exists('$(FirmwareHelperDir)/VoltraFlasher')" Text="Build the Linux firmware helper first: bash LinuxApp/Tools/build-flasher.sh" />
+    <GetFileHash Files="$(FirmwareHelperDir)/VoltraFlasher" Algorithm="SHA256"><Output TaskParameter="Hash" PropertyName="ActualHelperHash" /></GetFileHash>
+    <Error Condition="'$(ActualHelperHash)' != '$(FirmwareHelperHash)'" Text="Linux flasher checksum mismatch. Rebuild the helper." />
+  </Target>
 </Project>

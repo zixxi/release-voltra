@@ -9,6 +9,8 @@ internal sealed class MainViewModel : IAsyncDisposable
 
     internal Settings Settings => Volatile.Read(ref settings);
     internal string? Message => Volatile.Read(ref message);
+    internal LinuxFirmwareUpdater Firmware { get; } = new();
+    internal bool FirmwareDialogOpen { get; set; }
     internal LinuxDeviceService Device { get; }
     internal PipeWireAudioService Audio { get; }
     internal OledDisplayService Oled { get; }
@@ -68,6 +70,6 @@ internal sealed class MainViewModel : IAsyncDisposable
     {
         await startup.WaitAsync();
         try { await Task.WhenAll(save, Oled.DisposeAsync().AsTask(), Audio.DisposeAsync().AsTask(), Device.DisposeAsync().AsTask()); }
-        finally { startup.Release(); }
+        finally { Firmware.Dispose(); startup.Release(); }
     }
 }

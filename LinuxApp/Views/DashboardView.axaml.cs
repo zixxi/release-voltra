@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -16,7 +18,6 @@ public sealed partial class DashboardView : UserControl
     internal void Setup(MainViewModel model, WriteableBitmap preview, Action openOled)
     {
         Preview.Setup("OLED preview", 192, preview);
-        SizeChanged += (_, e) => DisplayPanel.MinHeight = Math.Clamp(e.NewSize.Width * .34, 200, 260);
         IdlePageMenu.ItemsSource = OledView.PageNames;
         IdlePageMenu.SelectedIndex = (int)model.Settings.Page;
         IdlePageMenu.SelectionChanged += (_, _) =>
@@ -28,7 +29,11 @@ public sealed partial class DashboardView : UserControl
         EditMapping.Click += async (_, _) =>
         {
             if (TopLevel.GetTopLevel(this) is not Window parent) return;
-            var dialog = new MappingWindow(model.Settings.Channels, model.Audio.Snapshot.Applications, model.Settings.FormatAppNames);
+            var dialog = new MappingWindow(model.Settings.Channels, model.Audio.Snapshot.Applications, model.Settings.FormatAppNames, parent is MainWindow { ReducedMotion: true })
+            {
+                Width = Math.Min(616, parent.ClientSize.Width),
+                Height = Math.Min(369, parent.ClientSize.Height)
+            };
             if (await dialog.ShowDialog<Channel[]?>(parent) is { } channels)
                 model.Change(model.Settings with { Channels = channels });
         };
@@ -59,6 +64,15 @@ public sealed partial class DashboardView : UserControl
         private bool active;
         private ThemeVariant? theme;
 
+        private static readonly StyledProperty<double> NeedleProperty =
+            AvaloniaProperty.Register<Meter, double>("Needle");
+        private readonly Transitions needleMotion = [new DoubleTransition
+        {
+            Property = NeedleProperty, Duration = TimeSpan.FromMilliseconds(110), Easing = new CubicEaseOut()
+        }];
+
+        static Meter() => AffectsRender<Meter>(NeedleProperty);
+
         internal Meter(int index) => this.index = index;
 
         internal void Set(string label, int? volume, int? waiting, bool active, string accent)
@@ -68,6 +82,12 @@ public sealed partial class DashboardView : UserControl
             if (this.label != label || this.waiting != waiting)
                 ToolTip.SetTip(this, waiting is int knob ? $"{label} · waiting for knob at {knob}%" : label);
             this.label = label;
+            if (this.volume != volume)
+            {
+                Transitions = this.volume.HasValue && volume.HasValue && TopLevel.GetTopLevel(this) is MainWindow { ReducedMotion: false }
+                    ? needleMotion : null;
+                SetValue(NeedleProperty, (double)(volume ?? 0));
+            }
             this.volume = volume;
             this.waiting = waiting;
             this.active = active;
@@ -77,12 +97,19 @@ public sealed partial class DashboardView : UserControl
             InvalidateVisual();
         }
 
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            // Reserve room for the needle, tick marks and both captions at every channel width.
+            double radius = Math.Min(availableSize.Width * .33, 61);
+            return new Size(0, Math.Ceiling(2 * radius + 60));
+        }
+
         public override void Render(DrawingContext context)
         {
             base.Render(context);
-            double radius = Math.Min(Bounds.Width * .33, Bounds.Height * .28);
+            double radius = Math.Min(61, Math.Min(Bounds.Width * .33, (Bounds.Height - 60) / 2));
             if (radius < 10) return;
-            var center = new Point(Bounds.Width / 2, radius + 16);
+            var center = new Point(Bounds.Width / 2, radius + 13);
             var app = Application.Current!;
             IBrush Brush(string key, IBrush fallback) =>
                 app.TryGetResource(key, ActualThemeVariant, out var value) && value is IBrush brush ? brush : fallback;
@@ -104,18 +131,18 @@ public sealed partial class DashboardView : UserControl
             for (int i = 0; i <= 10; i++)
                 context.DrawLine(tick, At(i / 10d, radius + 5), At(i / 10d, radius + (i % 5 == 0 ? 11 : 8)));
             if (waiting is int knob) context.DrawLine(new Pen(muted, 2.2), At(knob / 100d, radius + 4), At(knob / 100d, radius + 11));
-            if (volume is int level)
+            if (volume.HasValue)
             {
-                double filled = Math.Clamp(level / 100d, 0, 1);
+                double filled = Math.Clamp(GetValue(NeedleProperty) / 100d, 0, 1);
                 if (filled > 0) Arc(tone, filled, active ? 6 : 5);
                 context.DrawLine(new Pen(tone, 2.5), center, At(filled, radius - 9));
                 context.DrawEllipse(tone, null, center, 3.5, 3.5);
             }
 
-            double captionY = center.Y + radius + 10;
-            Caption(label, Font("VoltraFont", FontWeight.SemiBold), 14, text, captionY);
-            Caption(volume is int current ? $"{current}%" : "—", Font("MeterFont"), 17,
-                volume.HasValue ? text : muted, captionY + 23);
+            double captionY = center.Y + radius + 5;
+            Caption(label, Font("VoltraFont", FontWeight.SemiBold), 13, text, captionY);
+            Caption(volume is int current ? $"{current}%" : "—", Font("MeterFont"), 15,
+                volume.HasValue ? text : muted, captionY + 19);
 
             void Arc(IBrush brush, double value, double thickness)
             {
@@ -134,7 +161,7 @@ public sealed partial class DashboardView : UserControl
                 using var line = new Avalonia.Media.TextFormatting.TextLayout(value, face, size, brush,
                     TextAlignment.Center, TextWrapping.NoWrap, textTrimming: TextTrimming.CharacterEllipsis,
                     maxWidth: Math.Max(1, Bounds.Width - 2), maxLines: 1);
-                line.Draw(context, new Point(1, top + (23 - line.Height) / 2));
+                line.Draw(context, new Point(1, top + (19 - line.Height) / 2));
             }
         }
     }

@@ -48,6 +48,7 @@ public sealed partial class App : Application
         {
             if (exiting) return;
             e.Cancel = true;
+            if (model.FirmwareDialogOpen) return;
             if (nativeTray) window.Hide();
             else _ = ExitAsync();
         };
@@ -98,7 +99,7 @@ public sealed partial class App : Application
 
         async Task ExitAsync()
         {
-            if (exiting) return;
+            if (exiting || model.FirmwareDialogOpen || model.Firmware.Installing) return;
             exiting = true;
             window.StopRefresh();
             try { await model.DisposeAsync(); }
