@@ -1,0 +1,57 @@
+name: Build Voltra Linux x64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Package Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Linux packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-pip
+
+      - name: Determine version from repository
+        id: version
+        shell: bash
+        run: |
+          version=$(dotnet msbuild LinuxApp/LinuxApp.csproj -nologo -getProperty:VoltraVersion)
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid VoltraVersion: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build complete Linux package
+        env:
+          PYTHON: python3.12
+        run: bash LinuxApp/Tools/build-release.sh "${{ steps.version.outputs.tag }}"
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Voltra-linux-x64-${{ steps.version.outputs.version }}
+          path: artifacts/Voltra-linux-x64-${{ steps.version.outputs.version }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
