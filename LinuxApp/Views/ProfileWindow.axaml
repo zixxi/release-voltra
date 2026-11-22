@@ -1,21 +1,41 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Voltra.Linux.Views.ProfileWindow" Title="Manage profiles" Width="415"
+        x:Class="Voltra.Linux.Views.ProfileWindow" Title="Profiles" Width="510"
         SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner">
-  <StackPanel Margin="18" Spacing="7">
-    <TextBlock Text="Profile" Classes="muted"/>
-    <ComboBox Name="Picker" HorizontalAlignment="Stretch" MaxDropDownHeight="200"/>
-    <TextBlock Text="Name for create, duplicate or rename" Classes="muted"/>
-    <TextBox Name="ProfileName" MaxLength="32"/>
-    <StackPanel Orientation="Horizontal" Spacing="6">
-      <Button Name="CreateProfile" Content="Create blank"/>
-      <Button Name="DuplicateProfile" Content="Duplicate"/>
-      <Button Name="RenameProfile" Content="Rename"/>
-    </StackPanel>
-    <TextBlock Name="Feedback" Classes="muted" TextWrapping="Wrap"/>
-    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
-      <Button Name="DeleteProfile" Content="Delete"/>
-      <Button Name="CloseDialog" Grid.Column="2" Content="Close"/>
-      <Button Name="ActivateProfile" Grid.Column="3" Content="Activate" Classes="action"/>
+  <Grid Margin="18" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+    <TextBlock Text="Profiles" FontSize="20" FontWeight="SemiBold"/>
+    <TextBlock Grid.Row="1" Text="Manage your knob mapping profiles." Classes="muted"/>
+    <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
+      <ListBox Name="Picker" Height="168" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Line}"
+               BorderThickness="1" CornerRadius="6" AutomationProperties.Name="Profiles"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" Text="Active" IsVisible="{Binding Active}" Foreground="{DynamicResource VoltraAccent}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+          <Style Selector="ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource Selected}"/></Style>
+        </ListBox.Styles>
+      </ListBox>
+      <StackPanel Grid.Column="1" Spacing="6">
+        <TextBlock Text="Profile name" Classes="muted"/>
+        <TextBox Name="ProfileName" MaxLength="32" AutomationProperties.Name="Profile name"/>
+        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6">
+          <Button Name="CreateProfile" Content="New" HorizontalAlignment="Stretch"/>
+          <Button Grid.Column="1" Name="DuplicateProfile" Content="Duplicate" HorizontalAlignment="Stretch"/>
+          <Button Grid.Row="1" Name="RenameProfile" Content="Rename" HorizontalAlignment="Stretch"/>
+          <Button Grid.Row="1" Grid.Column="1" Name="DeleteProfile" Content="Delete" HorizontalAlignment="Stretch"/>
+        </Grid>
+        <TextBlock Name="Feedback" Classes="error" TextWrapping="Wrap"/>
+      </StackPanel>
     </Grid>
-  </StackPanel>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+      <Button Name="CloseDialog" Content="Close" Width="90"/>
+      <Button Name="ActivateProfile" Content="Activate" Classes="action" Width="90"/>
+    </StackPanel>
+  </Grid>
 </Window>

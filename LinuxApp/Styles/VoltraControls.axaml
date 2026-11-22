@@ -249,4 +249,19 @@
         <Setter Property="Template"><ControlTemplate><Border Background="Transparent" /></ControlTemplate></Setter>
     </Style>
     <Style Selector="Thumb#PageThumb:pointerover /template/ Border#ThumbBody"><Setter Property="Background" Value="{DynamicResource Muted}" /></Style>
+    <Style Selector="FlyoutPresenter.profiles">
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="Button.profileEntry">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="7,0" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.profileEntry.active"><Setter Property="Foreground" Value="{DynamicResource VoltraAccent}" /></Style>
 </Styles>

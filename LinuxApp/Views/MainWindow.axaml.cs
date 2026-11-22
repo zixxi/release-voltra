@@ -36,25 +36,40 @@ public sealed partial class MainWindow : Window
         Dashboard.Setup(model, preview, () => Navigate(1));
         Oled.Setup(model, preview);
         Preferences.Setup(model);
-        bool refreshingProfiles = false;
-        void ShowProfiles()
+        void ShowActiveProfile()
         {
-            var profiles = model.Settings.Profiles;
-            refreshingProfiles = true;
-            ProfilePicker.ItemsSource = profiles.Items;
-            ProfilePicker.SelectedItem = profiles.Active;
-            refreshingProfiles = false;
+            string name = model.Settings.Profiles.Active.Name;
+            ActiveProfileName.Text = name;
+            Avalonia.Automation.AutomationProperties.SetName(ProfilePicker, $"Active profile: {name}");
+            ToolTip.SetTip(ProfilePicker, name);
         }
-        ShowProfiles();
-        ProfilePicker.SelectionChanged += (_, _) =>
+        ShowActiveProfile();
+        var profileMenu = (Flyout)ProfilePicker.Flyout!;
+        profileMenu.Opening += (_, _) =>
         {
-            if (!refreshingProfiles && ProfilePicker.SelectedItem is MappingProfile<Channel> item && item.Id != model.Settings.Profiles.ActiveId)
-                model.Change(model.Settings.WithProfiles(model.Settings.Profiles.Activate(item.Id)));
+            ProfileActions.Width = Math.Max(132, ProfilePicker.Bounds.Width - 8);
+            ProfileChoices.Children.Clear();
+            foreach (var profile in model.Settings.Profiles.Items)
+            {
+                var entry = new Button { Content = new TextBlock { Text = profile.Name,
+                    TextTrimming = TextTrimming.CharacterEllipsis } };
+                entry.Classes.Add("profileEntry");
+                entry.Classes.Set("active", profile.Id == model.Settings.Profiles.ActiveId);
+                entry.Click += (_, _) =>
+                {
+                    profileMenu.Hide();
+                    if (profile.Id != model.Settings.Profiles.ActiveId)
+                        model.Change(model.Settings.WithProfiles(model.Settings.Profiles.Activate(profile.Id)));
+                    ShowActiveProfile();
+                };
+                ProfileChoices.Children.Add(entry);
+            }
         };
         ManageProfiles.Click += async (_, _) =>
         {
+            profileMenu.Hide();
             await new ProfileWindow(model).ShowDialog(this);
-            ShowProfiles();
+            ShowActiveProfile();
         };
         DashboardButton.Click += (_, _) => Navigate(0);
         OledButton.Click += (_, _) => Navigate(1);
