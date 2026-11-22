@@ -106,6 +106,13 @@ internal sealed record MixerSettings
         .Where(path => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path))
         .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
+    [System.Text.Json.Serialization.JsonConverter(typeof(MappingProfilesConverter<Channel>))]
+    public MappingProfiles<Channel> Profiles { get; init; } = new();
+    internal MixerSettings WithProfiles(MappingProfiles<Channel> profiles) =>
+        this with { Profiles = profiles, Channels = profiles.Active.Channels };
+    internal MixerSettings RestoreProfiles() => WithProfiles((Profiles ?? new()).Restore(Channels,
+        c => new Channel(c.Label ?? "", c.Processes ?? "")));
+
     public Channel[] Channels { get; init; } =
     [
         new("Spotify", "Spotify.exe"), new("Discord", "Discord.exe"),
@@ -119,16 +126,17 @@ internal sealed record MixerSettings
             bool migrate = !File.Exists(SettingsPath);
             string path = migrate ? Path.Combine(LegacyFolder, "settings.json") : SettingsPath;
             var settings = JsonSerializer.Deserialize<MixerSettings>(File.ReadAllText(path));
-            if (settings is not null && settings.Channels is { Length: 5 } &&
-                settings.Channels.All(channel => channel is not null) && Enum.IsDefined(settings.Page))
+            if (settings is not null)
             {
+                var defaults = new MixerSettings();
                 var normalized = settings with
                 {
                     RegisteredGames = NormalizePaths(settings.RegisteredGames),
                     ExcludedGames = NormalizePaths(settings.ExcludedGames),
                     FocusedAllow = NormalizePaths(settings.FocusedAllow),
                     FocusedDeny = NormalizePaths(settings.FocusedDeny),
-                    Channels = settings.Channels.Select(channel => new Channel(channel.Label ?? "", channel.Processes ?? "")).ToArray(),
+                    Page = Enum.IsDefined(settings.Page) ? settings.Page : defaults.Page,
+                    Channels = Enumerable.Range(0, 5).Select(i => settings.Channels?.ElementAtOrDefault(i) ?? defaults.Channels[i]).ToArray(),
                     PreferredPort = settings.PreferredPort ?? "",
                     TakeoverMode = Enum.IsDefined(settings.TakeoverMode) ? settings.TakeoverMode : KnobTakeover.Soft,
                     KnobNoiseThreshold = Math.Clamp(settings.KnobNoiseThreshold, 1, 5),
@@ -137,12 +145,13 @@ internal sealed record MixerSettings
                     Accent = ThemePalette.IsHex(settings.Accent) ? settings.Accent : DefaultAccent,
                     Separator = Enum.IsDefined(settings.Separator) ? settings.Separator : MixerSeparator.Automatic
                 };
+                normalized = normalized.RestoreProfiles();
                 if (migrate) Migrate(normalized);
                 return normalized;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
-        return new();
+        return new MixerSettings().RestoreProfiles();
     }
 
     internal static bool ReadStartupPreference() =>

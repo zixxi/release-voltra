@@ -29,6 +29,9 @@ internal sealed class MainViewModel : IAsyncDisposable
 
     internal void Change(Settings next)
     {
+        var previous = Settings;
+        if (ReferenceEquals(next.Profiles, previous.Profiles) && !ReferenceEquals(next.Channels, previous.Channels))
+            next = next.WithProfiles(next.Profiles.SaveMappings(next.Channels));
         Volatile.Write(ref settings, next);
         save = SaveAfterAsync(save, next);
     }

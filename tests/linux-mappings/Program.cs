@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Voltra.Linux;
 
+if (args is ["--profiles-ui"]) { ProfileUiTests.Run(); return; }
+
 static void Check(bool ok, string message)
 {
     if (!ok) throw new Exception(message);
@@ -94,6 +96,47 @@ try
     config = config with { Rules = rules with { FocusAllow = [], FocusDeny = [], GameAllow = [] } };
     await LinuxSettingsService.SaveAsync(config);
     Check(LinuxSettingsService.Read(out _).Channels[0].Target == DynamicAudio.Focused, "mapping round trip");
+    var restored = LinuxSettingsService.Read(out _);
+    var profiles = restored.Profiles;
+    Check(profiles.Items.Length == 1 && profiles.Active.Name == "Default" &&
+        profiles.Active.Channels.SequenceEqual(config.Channels), "legacy mappings migrate to Default");
+    string first = profiles.ActiveId;
+    var blanks = Enumerable.Range(1, 5).Select(i => new Channel($"Knob {i}", "")).ToArray();
+    profiles = profiles.Create("Quiet", blanks);
+    string quiet = profiles.ActiveId;
+    Check(profiles.Active.Channels.All(c => c.Target == ""), "blank profile unassigned");
+    profiles = profiles.Create("Copy", profiles.Activate(first).Active.Channels);
+    var edited = profiles.Active.Channels.ToArray();
+    edited[0] = new("Chat", "Discord");
+    profiles = profiles.SaveMappings(edited).Rename(first, "Studio");
+    Check(profiles.Active.Channels[0] == edited[0] && profiles.Activate(first).Active.Channels[0] == config.Channels[0],
+        "editing a duplicate preserves original assignments");
+    void Reject(Action action)
+    {
+        try { action(); } catch (ArgumentException) { return; }
+        throw new Exception("Invalid profile operation accepted");
+    }
+    Reject(() => profiles.Rename(first, " quiet "));
+    Reject(() => profiles.Create("   ", blanks));
+    Reject(() => profiles.Create(new string('x', 33), blanks));
+    var remaining = profiles.Delete(quiet).Delete(profiles.ActiveId);
+    Check(remaining.ActiveId == first && remaining.Active.Name == "Studio", "active deletion selects remaining renamed profile");
+    Reject(() => remaining.Delete(first));
+    await LinuxSettingsService.SaveAsync(restored.WithProfiles(profiles));
+    var reload = LinuxSettingsService.Read(out _);
+    Check(reload.Profiles.Items.Length == 3 && reload.Profiles.ActiveId == profiles.ActiveId &&
+        reload.Channels.SequenceEqual(edited) && reload.Rules.FocusDeny.SequenceEqual(restored.Rules.FocusDeny), "active profile and assignments survive restart");
+    var path = Path.Combine(LinuxSettingsService.Folder, "settings.json");
+    var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+    json["Profiles"]!["Items"]!.AsArray().Insert(0, "invalid entry");
+    File.WriteAllText(path, json.ToJsonString());
+    Check(LinuxSettingsService.Read(out _).Profiles.Items.Length == 3, "malformed entry preserves other profiles");
+    json["Profiles"] = "invalid";
+    File.WriteAllText(path, json.ToJsonString());
+    var fallback = LinuxSettingsService.Read(out _);
+    Check(fallback.Profiles.Active.Name == "Default" && fallback.Channels.SequenceEqual(edited),
+        "malformed profile collection recovers legacy mirror");
+    config = config.WithProfiles(profiles.Activate(first));
     int[] levels = [20, 30, 0, 0, 0];
     await using var service = new PipeWireAudioService(() => Volatile.Read(ref config),
         () => new("", "", [], (int[])Volatile.Read(ref levels).Clone()));
@@ -143,6 +186,22 @@ try
         "game soft pickup preserves relative levels");
     Set("streams",two); Event("remove");
     await Until(() => service.Snapshot.Volumes[1] == null, "game stream removal");
+    before = Writes();
+    var alternate = config.WithProfiles(profiles);
+    Volatile.Write(ref config, alternate);
+    await Until(() => service.Snapshot.Volumes[0] == 90 && service.Snapshot.Waiting[0], "profile switch rebinds active audio");
+    Knob(0, 69); await Task.Delay(250);
+    Check(Writes() == before, "switch and pre-pickup movement preserve volume");
+    Knob(0, 90); await Task.Delay(250); Knob(0, 93);
+    await Until(() => Writes().Contains("set-sink-input-volume 2 93%"), "new profile takes over after pickup");
+    var explicitMapping = profiles.Active.Channels.ToArray();
+    explicitMapping[0] = new("Music", "Spotify");
+    Volatile.Write(ref config, (config with { Sync = false }).WithProfiles(profiles.Create("Manual", explicitMapping)));
+    await Until(() => service.Snapshot.Volumes[0] == 67, "unsynced profile reads target before input");
+    before = Writes(); await Task.Delay(250);
+    Check(!before.Contains("set-sink-input-volume 1 93%") && before == Writes(), "stationary hardware never writes on switch");
+    Knob(0, 95);
+    await Until(() => Writes().Contains("set-sink-input-volume 1 95%"), "physical motion resumes unsynced control");
     Check(!Writes().Contains("set-sink-volume "), "no Master writes");
 }
 finally { Directory.Delete(dir, true); }

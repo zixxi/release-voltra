@@ -36,6 +36,26 @@ public sealed partial class MainWindow : Window
         Dashboard.Setup(model, preview, () => Navigate(1));
         Oled.Setup(model, preview);
         Preferences.Setup(model);
+        bool refreshingProfiles = false;
+        void ShowProfiles()
+        {
+            var profiles = model.Settings.Profiles;
+            refreshingProfiles = true;
+            ProfilePicker.ItemsSource = profiles.Items;
+            ProfilePicker.SelectedItem = profiles.Active;
+            refreshingProfiles = false;
+        }
+        ShowProfiles();
+        ProfilePicker.SelectionChanged += (_, _) =>
+        {
+            if (!refreshingProfiles && ProfilePicker.SelectedItem is MappingProfile<Channel> item && item.Id != model.Settings.Profiles.ActiveId)
+                model.Change(model.Settings.WithProfiles(model.Settings.Profiles.Activate(item.Id)));
+        };
+        ManageProfiles.Click += async (_, _) =>
+        {
+            await new ProfileWindow(model).ShowDialog(this);
+            ShowProfiles();
+        };
         DashboardButton.Click += (_, _) => Navigate(0);
         OledButton.Click += (_, _) => Navigate(1);
         SettingsButton.Click += (_, _) => Navigate(2);

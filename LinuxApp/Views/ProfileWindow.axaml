@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Voltra.Linux.Views.ProfileWindow" Title="Manage profiles" Width="415"
+        SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="18" Spacing="7">
+    <TextBlock Text="Profile" Classes="muted"/>
+    <ComboBox Name="Picker" HorizontalAlignment="Stretch" MaxDropDownHeight="200"/>
+    <TextBlock Text="Name for create, duplicate or rename" Classes="muted"/>
+    <TextBox Name="ProfileName" MaxLength="32"/>
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <Button Name="CreateProfile" Content="Create blank"/>
+      <Button Name="DuplicateProfile" Content="Duplicate"/>
+      <Button Name="RenameProfile" Content="Rename"/>
+    </StackPanel>
+    <TextBlock Name="Feedback" Classes="muted" TextWrapping="Wrap"/>
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+      <Button Name="DeleteProfile" Content="Delete"/>
+      <Button Name="CloseDialog" Grid.Column="2" Content="Close"/>
+      <Button Name="ActivateProfile" Grid.Column="3" Content="Activate" Classes="action"/>
+    </Grid>
+  </StackPanel>
+</Window>

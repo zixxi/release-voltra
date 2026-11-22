@@ -194,6 +194,14 @@ def main(root):
             os.close(fd)
             raise AssertionError("Serial port did not have an exclusive handle")
 
+        handshakes = sum(line.startswith("@H,") for line in real.commands)
+        app.state("profile")
+        eventually(lambda: list(real.commands), lambda commands: all(
+            f"@L{i},Studio {i}" in commands for i in range(1, 6)), "new profile OLED labels")
+        assert app.connected(real.alias)["Levels"] == KNOBS
+        assert sum(line.startswith("@H,") for line in real.commands) == handshakes
+        print("PASS profile switch updates five OLED labels on the existing serial connection")
+
         # The updater must actually close the descriptor before handing off to the ROM helper.
         app.state("hold")
         assert not app.open_ports()

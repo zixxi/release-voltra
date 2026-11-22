@@ -193,7 +193,7 @@ internal sealed partial class MixerForm : Form
 
     private Control BuildSidebar()
     {
-        var sidebar = Grid(1, 4);
+        var sidebar = Grid(1, 8);
         sidebar.BackColor = palette.Sidebar;
         sidebar.Padding = new(10, 20, 10, 14);
         sidebar.ColumnStyles.Add(new(SizeType.Percent, 100));
@@ -244,6 +244,31 @@ internal sealed partial class MixerForm : Form
         connectionDetail.Padding = new(10, 0, 0, 0);
         sidebar.Controls.Add(connection, 0, 2);
         sidebar.Controls.Add(connectionDetail, 0, 3);
+        sidebar.RowStyles.Add(new(SizeType.Absolute, 12));
+        sidebar.RowStyles.Add(new(SizeType.Absolute, 22));
+        sidebar.RowStyles.Add(new(SizeType.Absolute, 36));
+        sidebar.RowStyles.Add(new(SizeType.Absolute, 36));
+        sidebar.Controls.Add(Divider(), 0, 4);
+        sidebar.Controls.Add(Caption("Profile", 9, muted: true), 0, 5);
+        var profiles = Choice([], -1);
+        profiles.Dock = DockStyle.Fill;
+        profiles.AccessibleName = "Active profile";
+        void RefreshProfiles() => profiles.SetOptions([.. config.Profiles.Items],
+            Array.FindIndex(config.Profiles.Items, p => p.Id == config.Profiles.ActiveId));
+        RefreshProfiles();
+        profiles.Committed += (_, _) =>
+        {
+            if (profiles.SelectedItem is MappingProfile<Channel> item && item.Id != config.Profiles.ActiveId)
+                Persist(config.WithProfiles(config.Profiles.Activate(item.Id)));
+        };
+        sidebar.Controls.Add(profiles, 0, 6);
+        var manage = ActionButton("Manage profiles…", () =>
+        {
+            ManageProfiles();
+            RefreshProfiles();
+        });
+        manage.Dock = DockStyle.Fill;
+        sidebar.Controls.Add(manage, 0, 7);
         return sidebar;
     }
 
@@ -857,6 +882,8 @@ internal sealed partial class MixerForm : Form
 
     private async void Persist(MixerSettings updated)
     {
+        if (ReferenceEquals(updated.Profiles, config.Profiles) && !ReferenceEquals(updated.Channels, config.Channels))
+            updated = updated.WithProfiles(updated.Profiles.SaveMappings(updated.Channels));
         config = updated;
         nextFrame = 0;
         link.Configure(updated);

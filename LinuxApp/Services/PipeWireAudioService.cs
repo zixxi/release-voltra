@@ -83,6 +83,8 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
         var knobs = Enumerable.Range(0, 5).Select(_ => new VolumeTakeover()).ToArray();
         AudioTarget[] targets = [];
         AudioApplication[] apps = [];
+        var profileIds = new string?[5];
+        var awaitingMovement = new bool[5];
         var assignments = new string?[5];
         var targetSets = new string?[5];
         var actual = new int?[5];
@@ -150,9 +152,12 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                         var key = string.Join('|', matching.Select(x => movingTarget
                             ? $"{x.Id}:{x.Serial}:{x.Identity?.Key}:{x.Identity?.Pid}:{x.Identity?.Lifetime}" : x.Id).Order());
                         int? current = matching.Length == 0 ? null : (int)Math.Round(matching.Average(x => x.Level));
-                        if (assignments[i] != binding || targetSets[i] != key)
+                        bool switched = profileIds[i] != null && profileIds[i] != config.Profiles.ActiveId;
+                        profileIds[i] = config.Profiles.ActiveId;
+                        if (switched) awaitingMovement[i] = true;
+                        if (switched || assignments[i] != binding || targetSets[i] != key)
                         {
-                            if (movingTarget) knob.Rebind(readings?[i], current, config.Sync);
+                            if (movingTarget || awaitingMovement[i]) knob.Rebind(readings?[i], current, config.Sync);
                             else knob.Reset();
                             assignments[i] = binding;
                             targetSets[i] = key;
@@ -170,6 +175,16 @@ internal sealed class PipeWireAudioService : IAsyncDisposable
                             continue;
                         }
                         if (Volatile.Read(ref topologyRevision) != seenTopology) break;
+                        if (awaitingMovement[i])
+                        {
+                            if (knob.Hardware is not int baseline)
+                            {
+                                knob.Rebind(readings[i], current, config.Sync);
+                                continue;
+                            }
+                            if (baseline == readings[i]) continue;
+                            awaitingMovement[i] = false;
+                        }
                         if (knob.Move(readings[i], config.Sync, config.Takeover, config.NoiseThreshold) is not int level ||
                             matching.All(target => target.Level == level)) continue;
 

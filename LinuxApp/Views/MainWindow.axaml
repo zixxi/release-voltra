@@ -8,7 +8,7 @@
       <ColumnDefinition Width="84*" />
     </Grid.ColumnDefinitions>
     <Border Background="{DynamicResource Sidebar}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
-      <Grid Margin="8,16,8,12" RowDefinitions="Auto,*,Auto">
+      <Grid Margin="8,16,8,12" RowDefinitions="Auto,*,Auto,Auto">
         <Grid>
           <StackPanel Spacing="4">
             <Button Name="DashboardButton" Classes="nav selected" Content="Dashboard" />
@@ -31,6 +31,14 @@
                      TextTrimming="CharacterEllipsis" />
           <TextBlock Name="AudioStatus" Classes="muted" FontSize="{StaticResource StatusSize}" Margin="14,0,0,0"
                      TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <StackPanel Grid.Row="3" Margin="2,6,2,0" Spacing="3">
+          <Border Height="1" Background="{DynamicResource Line}" />
+          <TextBlock Text="Profile" Classes="muted" FontSize="12" />
+          <ComboBox Name="ProfilePicker" HorizontalAlignment="Stretch" MaxDropDownHeight="220"
+                    AutomationProperties.Name="Active profile" />
+          <Button Name="ManageProfiles" Content="Manage profiles…" HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Center" Padding="1,2" FontSize="12" />
         </StackPanel>
       </Grid>
     </Border>

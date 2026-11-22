@@ -46,6 +46,8 @@ internal sealed class AudioCoordinator : IDisposable
         });
         VolumeTakeover[] channels = Enumerable.Range(0, 5).Select(_ => new VolumeTakeover()).ToArray();
         var sources = new object?[5];
+        string? profile = null;
+        var awaitingMovement = new bool[5];
         Channel[]? mappings = null;
         bool? previousSync = null, previousFormatting = null;
         Input? consumed = null;
@@ -57,6 +59,9 @@ internal sealed class AudioCoordinator : IDisposable
         {
             long now = Environment.TickCount64;
             var config = Volatile.Read(ref settings);
+            bool switched = profile is not null && profile != config.Profiles.ActiveId;
+            profile = config.Profiles.ActiveId;
+            if (switched) Array.Fill(awaitingMovement, true);
             bool remapped = !ReferenceEquals(mappings, config.Channels);
             bool syncChanged = previousSync != config.WindowsVolumeSync;
             if (remapped)
@@ -85,9 +90,9 @@ internal sealed class AudioCoordinator : IDisposable
             for (int channel = 0; channel < channels.Length; channel++)
             {
                 var (source, volume) = audio.Bindings.Current(channel);
-                if (ReferenceEquals(sources[channel], source)) continue;
+                if (!switched && ReferenceEquals(sources[channel], source)) continue;
                 sources[channel] = source;
-                if (config.Channels[channel].Dynamic)
+                if (switched || config.Channels[channel].Dynamic || awaitingMovement[channel])
                     channels[channel].Rebind(latest.Values?[channel], volume, config.WindowsVolumeSync);
                 else
                 {
@@ -117,6 +122,16 @@ internal sealed class AudioCoordinator : IDisposable
                 {
                     for (int index = 0; index < channels.Length; index++)
                     {
+                        if (awaitingMovement[index])
+                        {
+                            if (sources[index] is null || channels[index].Hardware is not int baseline)
+                            {
+                                channels[index].Rebind(latest.Values[index], channels[index].Actual, config.WindowsVolumeSync);
+                                continue;
+                            }
+                            if (baseline == latest.Values[index]) continue;
+                            awaitingMovement[index] = false;
+                        }
                         bool wasWaiting = channels[index].Waiting;
                         int? value = channels[index].Move(latest.Values[index], config.WindowsVolumeSync,
                             config.TakeoverMode, config.KnobNoiseThreshold,
@@ -163,7 +178,7 @@ internal sealed class AudioCoordinator : IDisposable
 
             void Write(int index, int value)
             {
-                if (!ReferenceEquals(config.Channels, Volatile.Read(ref settings).Channels)) return;
+                if (awaitingMovement[index] || !ReferenceEquals(config.Channels, Volatile.Read(ref settings).Channels)) return;
                 bool dynamicMapping = config.Channels[index].Dynamic;
                 int? actual = audio.Bindings.Apply(index, value, dynamicMapping, config.WindowsVolumeSync,
                     config.TakeoverMode, audio.ForegroundUnchanged, (other, level) => channels[other].ObserveWindows(level, config.WindowsVolumeSync));

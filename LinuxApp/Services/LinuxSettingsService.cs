@@ -13,6 +13,13 @@ internal sealed record Settings
     internal const string Master = "@master";
     internal const string DefaultAccent = "#B78BFA";
     public MappingRules Rules { get; init; } = new();
+    [System.Text.Json.Serialization.JsonConverter(typeof(MappingProfilesConverter<Channel>))]
+    public MappingProfiles<Channel> Profiles { get; init; } = new();
+    internal Settings WithProfiles(MappingProfiles<Channel> profiles) =>
+        this with { Profiles = profiles, Channels = profiles.Active.Channels };
+    internal Settings RestoreProfiles() => WithProfiles((Profiles ?? new()).Restore(Channels,
+        c => new Channel(c.Label ?? "", c.Target ?? "")));
+
     public Channel[] Channels { get; init; } =
         [new("Spotify", "spotify"), new("Discord", "discord"), new("Firefox", "firefox"),
          new("Game", DynamicAudio.Game), new("Master", Master)];
@@ -54,10 +61,10 @@ internal static class LinuxSettingsService
         error = null;
         try
         {
-            if (!File.Exists(PathName)) return new();
+            if (!File.Exists(PathName)) return new Settings().RestoreProfiles();
             var value = JsonSerializer.Deserialize<Settings>(File.ReadAllText(PathName)) ?? new();
             var defaults = new Settings();
-            return value with
+            return (value with
             {
                 Rules = (value.Rules ?? new()).Normalize(),
                 Channels = Enumerable.Range(0, 5).Select(i =>
@@ -73,12 +80,12 @@ internal static class LinuxSettingsService
                 Separator = Enum.IsDefined(value.Separator) ? value.Separator : defaults.Separator,
                 Takeover = Enum.IsDefined(value.Takeover) ? value.Takeover : defaults.Takeover,
                 NoiseThreshold = Math.Clamp(value.NoiseThreshold, 1, 5)
-            };
+            }).RestoreProfiles();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             error = $"Could not load preferences: {ex.Message}";
-            return new();
+            return new Settings().RestoreProfiles();
         }
     }
 

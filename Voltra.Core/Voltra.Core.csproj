@@ -6,6 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="LinuxApp" />
+    <InternalsVisibleTo Include="Voltra.Linux.MappingTests" />
+    <InternalsVisibleTo Include="Voltra.Linux.SerialTests" />
     <Using Include="System.Drawing" />
     <Compile Include="../WindowsApp/AccentColor.cs" Link="AccentColor.cs" />
     <Compile Include="../WindowsApp/VolumeTakeover.cs" Link="VolumeTakeover.cs" />

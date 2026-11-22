@@ -10,6 +10,11 @@ device.SetFrame(new DisplayFrame(Enumerable.Repeat((byte)0xAA, 1024).ToArray(), 
 IDisposable? held = null;
 while (await Console.In.ReadLineAsync() is { } command && command != "quit")
 {
+    if (command == "profile")
+    {
+        var alternate = settings.Channels.Select((c, i) => c with { Label = $"Studio {i + 1}" }).ToArray();
+        Volatile.Write(ref settings, settings.WithProfiles(settings.Profiles.Create("Studio", alternate)));
+    }
     if (command == "hold") held = await device.HoldForFirmwareAsync(device.Snapshot, CancellationToken.None);
     if (command == "resume") { held?.Dispose(); held = null; }
     if (command == "automatic" || command.StartsWith("manual "))
