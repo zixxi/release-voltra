@@ -193,7 +193,7 @@ internal sealed partial class MixerForm : Form
 
     private Control BuildSidebar()
     {
-        var sidebar = Grid(1, 8);
+        var sidebar = Grid(1, 7);
         sidebar.BackColor = palette.Sidebar;
         sidebar.Padding = new(10, 20, 10, 14);
         sidebar.ColumnStyles.Add(new(SizeType.Percent, 100));
@@ -246,29 +246,126 @@ internal sealed partial class MixerForm : Form
         sidebar.Controls.Add(connectionDetail, 0, 3);
         sidebar.RowStyles.Add(new(SizeType.Absolute, 12));
         sidebar.RowStyles.Add(new(SizeType.Absolute, 22));
-        sidebar.RowStyles.Add(new(SizeType.Absolute, 36));
-        sidebar.RowStyles.Add(new(SizeType.Absolute, 36));
+        sidebar.RowStyles.Add(new(SizeType.Absolute, 38));
         sidebar.Controls.Add(Divider(), 0, 4);
-        sidebar.Controls.Add(Caption("Profile", 9, muted: true), 0, 5);
-        var profiles = Choice([], -1);
-        profiles.Dock = DockStyle.Fill;
-        profiles.AccessibleName = "Active profile";
-        void RefreshProfiles() => profiles.SetOptions([.. config.Profiles.Items],
-            Array.FindIndex(config.Profiles.Items, p => p.Id == config.Profiles.ActiveId));
-        RefreshProfiles();
-        profiles.Committed += (_, _) =>
+        sidebar.Controls.Add(Caption("ACTIVE PROFILE", 9, muted: true), 0, 5);
+        var profileMenu = new ContextMenuStrip
         {
-            if (profiles.SelectedItem is MappingProfile<Channel> item && item.Id != config.Profiles.ActiveId)
-                Persist(config.WithProfiles(config.Profiles.Activate(item.Id)));
+            ShowImageMargin = false,
+            ShowCheckMargin = false,
+            DropShadowEnabled = false,
+            BackColor = palette.Field,
+            ForeColor = palette.Text,
+            Padding = new Padding(4),
+            AutoSize = false,
+            Renderer = new VoltraConsistentProfileMenuRenderer(palette)
         };
-        sidebar.Controls.Add(profiles, 0, 6);
-        var manage = ActionButton("Manage profiles…", () =>
+        profileMenu.Opened += (_, _) =>
         {
-            ManageProfiles();
-            RefreshProfiles();
-        });
-        manage.Dock = DockStyle.Fill;
-        sidebar.Controls.Add(manage, 0, 7);
+            const int radius = 9;
+
+            int w = profileMenu.Width;
+            int h = profileMenu.Height;
+
+            if (w <= radius * 2 || h <= radius * 2)
+                return;
+
+            using var path = new System.Drawing.Drawing2D.GraphicsPath();
+
+            path.AddArc(0, 0, radius * 2, radius * 2, 180, 90);
+            path.AddArc(w - radius * 2, 0, radius * 2, radius * 2, 270, 90);
+            path.AddArc(w - radius * 2, h - radius * 2, radius * 2, radius * 2, 0, 90);
+            path.AddArc(0, h - radius * 2, radius * 2, radius * 2, 90, 90);
+            path.CloseFigure();
+
+            var previousRegion = profileMenu.Region;
+            profileMenu.Region = new Region(path);
+            previousRegion?.Dispose();
+        };
+        sidebar.Disposed += (_, _) => profileMenu.Dispose();
+        SidebarProfilePicker? profileButton = null;
+        bool suppressNextProfileClick = false;
+        profileMenu.Closed += (_, e) =>
+        {
+            // A click on the picker can dismiss the popup before Click is raised.
+            // Do not reopen it from the same mouse gesture.
+            suppressNextProfileClick = e.CloseReason == ToolStripDropDownCloseReason.AppClicked &&
+                profileButton is not null &&
+                profileButton.ClientRectangle.Contains(profileButton.PointToClient(Control.MousePosition));
+        };
+        void RefreshProfileLabel()
+        {
+            var active = config.Profiles.Items.FirstOrDefault(p => p.Id == config.Profiles.ActiveId);
+            if (profileButton is null) return;
+            profileButton.ProfileName = active?.Name ?? "Default";
+            profileButton.AccessibleName = $"Active profile: {profileButton.ProfileName}. Open profiles menu";
+        }
+        profileButton = new SidebarProfilePicker(palette);
+        profileButton.Click += (_, _) =>
+        {
+            if (profileButton is null) return;
+            if (suppressNextProfileClick)
+            {
+                suppressNextProfileClick = false;
+                return;
+            }
+            if (profileMenu.Visible)
+            {
+                profileMenu.Close();
+                return;
+            }
+            // Keep the popup aligned to the picker, without WinForms auto-expanding it.
+            profileMenu.Width = profileButton.Width;
+            while (profileMenu.Items.Count > 0)
+            {
+                var oldItem = profileMenu.Items[0];
+                profileMenu.Items.RemoveAt(0);
+                oldItem.Dispose();
+            }
+            foreach (var profile in config.Profiles.Items)
+            {
+                var selectedProfile = profile;
+                bool active = selectedProfile.Id == config.Profiles.ActiveId;
+                var item = new ToolStripMenuItem(selectedProfile.Name.Replace("&", "&&"))
+                {
+                    
+                    ForeColor = active ? palette.Accent : palette.Text,
+                    AutoSize = false,
+                    Width = Math.Max(1, profileButton.Width - profileMenu.Padding.Horizontal - 2),
+                    Height = 32
+                };
+                item.Click += (_, _) =>
+                {
+                    if (selectedProfile.Id != config.Profiles.ActiveId)
+                        Persist(config.WithProfiles(config.Profiles.Activate(selectedProfile.Id)));
+                    RefreshProfileLabel();
+                };
+                profileMenu.Items.Add(item);
+            }
+            profileMenu.Items.Add(new ToolStripSeparator());
+            var manage = new ToolStripMenuItem("Manage profiles...")
+            {
+                ForeColor = palette.Text,
+                AutoSize = false,
+                Width = Math.Max(1, profileButton.Width - profileMenu.Padding.Horizontal - 2),
+                Height = 32
+            };
+            manage.Click += (_, _) =>
+            {
+                ManageProfiles();
+                RefreshProfileLabel();
+            };
+            profileMenu.Items.Add(manage);
+            // Fixed menu width; calculate height after populating its entries.
+            profileMenu.Height = profileMenu.Padding.Vertical + profileMenu.Items.Cast<ToolStripItem>()
+                .Sum(item => item.Height) + 2;
+            suppressNextProfileClick = false;
+            profileMenu.Show(profileButton, new Point(0, profileButton.Height + 4));
+        };
+        profileButton.Dock = DockStyle.Fill;
+        profileButton.Margin = new(0, 2, 0, 2);
+        RefreshProfileLabel();
+        sidebar.Controls.Add(profileButton, 0, 6);
         return sidebar;
     }
 

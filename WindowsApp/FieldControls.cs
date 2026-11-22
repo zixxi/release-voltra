@@ -348,7 +348,11 @@ internal sealed class MixerButton : Button
             e.Graphics.FillPath(brush, path);
         }
 
-        var bounds = new Rectangle(Padding.Left, 0, Math.Max(0, Width - Padding.Horizontal), Height);
+        // Center action and segmented labels in the complete control bounds;
+        // navigation buttons intentionally keep their left-aligned padding.
+        var bounds = Navigation
+            ? new Rectangle(Padding.Left, 0, Math.Max(0, Width - Padding.Horizontal), Height)
+            : ClientRectangle;
         Color foreground = Primary ? theme.AccentForeground : Navigation
             ? FieldChrome.Blend(theme.Muted, theme.Text, Math.Max(selection.Value, feedback.Value)) : theme.Text;
         TextRenderer.DrawText(e.Graphics, Text, Font, bounds, Enabled ? foreground : theme.Muted,
